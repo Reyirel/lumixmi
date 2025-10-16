@@ -59,17 +59,85 @@ export default function FormPage() {
     )
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const payload = {
-      watts,
-      poste,
-      coloniaId: selectedColonia,
-      coords,
-      imageName: image?.name ?? null,
+
+    // Validar campos requeridos
+    if (!selectedColonia) {
+      alert('Por favor selecciona una colonia')
+      return
     }
-    console.log('Enviar payload:', payload)
-    alert('Formulario enviado correctamente (revisa consola)')
+    if (!poste.trim()) {
+      alert('Por favor ingresa el número de poste')
+      return
+    }
+    if (!coords || !coords.lat || !coords.lng) {
+      alert('Por favor obtén la ubicación GPS')
+      return
+    }
+    if (!image) {
+      alert('Por favor sube una imagen de la luminaria')
+      return
+    }
+
+    try {
+      // Paso 1: Subir la imagen
+      const formData = new FormData()
+      formData.append('file', image)
+
+      const uploadResponse = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json()
+        throw new Error(errorData.error || 'Error al subir la imagen')
+      }
+
+      const uploadResult = await uploadResponse.json()
+      console.log('Imagen subida:', uploadResult)
+
+      // Paso 2: Crear la luminaria con la URL de la imagen
+      const payload = {
+        colonia_id: selectedColonia,
+        numero_poste: poste,
+        watts,
+        latitud: coords.lat,
+        longitud: coords.lng,
+        imagen_url: uploadResult.publicUrl,
+      }
+
+      const response = await fetch('/api/luminarias', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Error al enviar el formulario')
+      }
+
+      const result = await response.json()
+      console.log('Luminaria registrada:', result)
+      
+      alert('✅ Luminaria registrada exitosamente con imagen!')
+      
+      // Limpiar el formulario
+      setSelectedColonia(null)
+      setPoste('')
+      setWatts(25)
+      setCoords(null)
+      setImage(null)
+      setPreview(null)
+      
+    } catch (error) {
+      console.error('Error al enviar formulario:', error)
+      alert('❌ Error: ' + (error instanceof Error ? error.message : 'Error desconocido'))
+    }
   }
 
   return (

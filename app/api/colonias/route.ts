@@ -1,33 +1,28 @@
 import { NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
 
 export async function GET() {
-  // Simulamos datos que vendrían de una base de datos
-  const colonias = [
-    {
-      id: 1,
-      nombre: 'Colonia Centro',
-      barrios: [
-        { id: 1, nombre: 'Barrio A' },
-        { id: 2, nombre: 'Barrio B' },
-      ],
-    },
-    {
-      id: 2,
-      nombre: 'Colonia Norte',
-      barrios: [
-        { id: 3, nombre: 'Barrio C' },
-        { id: 4, nombre: 'Barrio D' },
-      ],
-    },
-    {
-      id: 3,
-      nombre: 'Colonia Sur',
-      barrios: [
-        { id: 5, nombre: 'Barrio E' },
-        { id: 6, nombre: 'Barrio F' },
-      ],
-    },
-  ]
+  try {
+    // Obtener colonias de Supabase ordenadas alfabéticamente
+    const { data, error } = await supabase
+      .from('colonias')
+      .select('*')
+      .order('nombre', { ascending: true })
 
-  return NextResponse.json(colonias)
+    if (error) {
+      console.error('Error obteniendo colonias:', error)
+      return NextResponse.json(
+        { error: 'Error al obtener colonias' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error('Error en GET /api/colonias:', error)
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    )
+  }
 }
