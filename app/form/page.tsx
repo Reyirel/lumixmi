@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from 'react'
+import Image from 'next/image'
 
 type Colonia = {
   id: number
@@ -287,10 +288,11 @@ export default function FormPage() {
                 </div>
                 {preview && (
                   <div className="mt-4 relative w-full h-64 rounded-xl overflow-hidden border-2 border-gray-200">
-                    <img
+                    <Image
                       src={preview}
                       alt="preview poste"
-                      className="w-full h-full object-cover"
+                      fill
+                      className="object-cover"
                     />
                     <button
                       type="button"
@@ -344,10 +346,11 @@ export default function FormPage() {
                 </div>
                 {previewWatts && (
                   <div className="mt-4 relative w-full h-64 rounded-xl overflow-hidden border-2 border-gray-200">
-                    <img
+                    <Image
                       src={previewWatts}
                       alt="preview watts"
-                      className="w-full h-full object-cover"
+                      fill
+                      className="object-cover"
                     />
                     <button
                       type="button"
@@ -401,10 +404,11 @@ export default function FormPage() {
                 </div>
                 {previewFotocelda && (
                   <div className="mt-4 relative w-full h-64 rounded-xl overflow-hidden border-2 border-gray-200">
-                    <img
+                    <Image
                       src={previewFotocelda}
                       alt="preview fotocelda"
-                      className="w-full h-full object-cover"
+                      fill
+                      className="object-cover"
                     />
                     <button
                       type="button"
@@ -586,7 +590,7 @@ export default function FormPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <p className="text-xs text-blue-700">
-                  <strong>Nota:</strong> Solo marca "Sí" si la capucha de la fotocelda es de color <strong>azul</strong>.
+                  <strong>Nota:</strong> Solo marca &quot;Sí&quot; si la capucha de la fotocelda es de color <strong>azul</strong>.
                 </p>
               </div>
             </div>
