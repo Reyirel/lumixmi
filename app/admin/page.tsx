@@ -18,6 +18,9 @@ type Luminaria = {
   latitud: number
   longitud: number
   imagen_url: string | null
+  imagen_watts_url: string | null
+  imagen_fotocelda_url: string | null
+  fotocelda_nueva: boolean
   created_at: string
   updated_at: string
   colonias?: {
@@ -37,8 +40,6 @@ export default function AdminPage() {
   const [colonias, setColonias] = useState<Colonia[]>([])
   const [luminarias, setLuminarias] = useState<Luminaria[]>([])
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [selectedColonia, setSelectedColonia] = useState<Colonia | null>(null)
   const [expandedWatt, setExpandedWatt] = useState<25 | 40 | 80 | null>(null)
   const [selectedLuminaria, setSelectedLuminaria] = useState<Luminaria | null>(null)
@@ -54,23 +55,11 @@ export default function AdminPage() {
 
     // Cargar datos inicialmente
     loadData()
-
-    // Configurar auto-refresco cada 10 segundos
-    const intervalId = setInterval(() => {
-      loadData()
-    }, 10000) // 10 segundos
-
-    // Limpiar intervalo al desmontar el componente
-    return () => clearInterval(intervalId)
   }, [router])
 
-  const loadData = async (isManualRefresh = false) => {
+  const loadData = async () => {
     try {
-      if (isManualRefresh) {
-        setRefreshing(true)
-      } else {
-        setLoading(true)
-      }
+      setLoading(true)
       
       const [coloniasRes, luminariasRes] = await Promise.all([
         fetch('/api/colonias'),
@@ -82,17 +71,11 @@ export default function AdminPage() {
 
       setColonias(coloniasData)
       setLuminarias(luminariasData)
-      setLastUpdate(new Date())
     } catch (error) {
       console.error('Error cargando datos:', error)
     } finally {
       setLoading(false)
-      setRefreshing(false)
     }
-  }
-
-  const handleManualRefresh = () => {
-    loadData(true)
   }
 
   const handleLogout = () => {
@@ -160,9 +143,9 @@ export default function AdminPage() {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center justify-center w-10 h-10 bg-black rounded-lg">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <div className="flex items-center justify-center w-10 h-10 bg-black rounded-lg flex-shrink-0">
                 <svg 
                   className="w-6 h-6 text-white" 
                   fill="none" 
@@ -177,77 +160,49 @@ export default function AdminPage() {
                   />
                 </svg>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Panel de Administrador</h1>
-                <div className="flex items-center space-x-2 text-sm text-gray-600">
-                  <span>{localStorage.getItem('userEmail')}</span>
-                  {lastUpdate && (
-                    <>
-                      <span>•</span>
-                      <span className="text-gray-500">
-                        Actualizado: {lastUpdate.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </>
-                  )}
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">Panel de Administrador</h1>
+                <div className="flex items-center space-x-2 text-xs sm:text-sm text-gray-600">
+                  <span className="truncate max-w-[200px] sm:max-w-none">{localStorage.getItem('userEmail')}</span>
                 </div>
               </div>
             </div>
-            <div className="flex items-center space-x-3">
-              {/* Botón de actualización */}
+            <div className="flex items-center space-x-2 sm:space-x-3 w-full sm:w-auto">
+              {/* Botón de ir al formulario */}
               <button 
-                onClick={handleManualRefresh}
-                disabled={refreshing}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Actualizar datos"
+                onClick={() => router.push('/form')}
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-black text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-gray-800 transition-all"
               >
-                <svg 
-                  className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <svg className="w-4 h-4 mr-1 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                {refreshing ? 'Actualizando...' : 'Actualizar'}
+                <span className="hidden xs:inline">Registrar Luminaria</span>
+                <span className="xs:hidden">Registrar</span>
               </button>
               
               {/* Botón de cerrar sesión */}
               <button 
                 onClick={handleLogout}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-all"
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-all"
               >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
-                Cerrar Sesión
+                <span className="hidden sm:inline">Cerrar Sesión</span>
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Banner de actualización automática */}
-        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded-lg">
-          <div className="flex items-center">
-            <svg className="w-5 h-5 text-blue-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div className="flex-1">
-              <p className="text-sm text-blue-700">
-                <span className="font-semibold">Actualización automática activada:</span> Los datos se actualizan cada 10 segundos automáticamente.
-              </p>
-            </div>
-          </div>
-        </div>
-
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
           <StatCard 
             title="Total Luminarias" 
             value={stats.total} 
             icon={
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
             }
@@ -256,28 +211,28 @@ export default function AdminPage() {
           <StatCard 
             title="Luminarias 25W" 
             value={stats.watts25} 
-            icon={<span className="text-xl font-bold">25W</span>}
+            icon={<span className="text-lg sm:text-xl font-bold">25W</span>}
             color="bg-blue-600"
           />
           <StatCard 
             title="Luminarias 40W" 
             value={stats.watts40} 
-            icon={<span className="text-xl font-bold">40W</span>}
+            icon={<span className="text-lg sm:text-xl font-bold">40W</span>}
             color="bg-green-600"
           />
           <StatCard 
             title="Luminarias 80W" 
             value={stats.watts80} 
-            icon={<span className="text-xl font-bold">80W</span>}
+            icon={<span className="text-lg sm:text-xl font-bold">80W</span>}
             color="bg-orange-600"
           />
         </div>
 
         {/* Search Bar */}
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
@@ -286,48 +241,48 @@ export default function AdminPage() {
               placeholder="Buscar comunidad..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-black focus:border-transparent text-gray-900"
+              className="block w-full pl-9 sm:pl-10 pr-3 py-2 sm:py-3 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-black focus:border-transparent text-sm sm:text-base text-gray-900"
             />
           </div>
         </div>
 
         {/* Communities Section */}
-        <div className="mb-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">
+        <div className="mb-4 sm:mb-6">
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-3 sm:mb-4">
             Comunidades ({filteredColonias.length})
           </h2>
         </div>
 
         {/* Communities Grid */}
         {filteredColonias.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {filteredColonias.map(colonia => {
               const lumCount = getLuminariasForColonia(colonia.id).length
               return (
                 <div
                   key={colonia.id}
                   onClick={() => setSelectedColonia(colonia)}
-                  className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 cursor-pointer transition-all duration-200 hover:shadow-lg hover:border-black hover:-translate-y-1"
+                  className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 cursor-pointer transition-all duration-200 hover:shadow-lg hover:border-black hover:-translate-y-1"
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold text-gray-900 mb-1">
+                  <div className="flex items-start justify-between mb-3 sm:mb-4">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-1 truncate">
                         {colonia.nombre}
                       </h3>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-xs sm:text-sm text-gray-500">
                         {new Date(colonia.created_at).toLocaleDateString('es-MX')}
                       </p>
                     </div>
-                    <div className="flex items-center justify-center w-12 h-12 bg-gray-100 rounded-lg">
-                      <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-gray-100 rounded-lg flex-shrink-0 ml-2">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                       </svg>
                     </div>
                   </div>
                   
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                    <span className="text-sm font-medium text-gray-600">Total de lámparas</span>
-                    <span className="inline-flex items-center justify-center px-3 py-1 rounded-full text-sm font-bold bg-black text-white">
+                  <div className="flex items-center justify-between pt-3 sm:pt-4 border-t border-gray-100">
+                    <span className="text-xs sm:text-sm font-medium text-gray-600">Total de lámparas</span>
+                    <span className="inline-flex items-center justify-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold bg-black text-white">
                       {lumCount}
                     </span>
                   </div>
@@ -351,7 +306,7 @@ export default function AdminPage() {
       {/* Modal Comunidad */}
       {selectedColonia && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4 animate-fadeIn"
           onClick={closeModal}
         >
           <div 
@@ -359,25 +314,25 @@ export default function AdminPage() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="px-6 py-5 border-b border-gray-200 flex items-center justify-between bg-gray-50">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">{selectedColonia.nombre}</h2>
-                <p className="text-sm text-gray-600 mt-1">
+            <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">{selectedColonia.nombre}</h2>
+                <p className="text-xs sm:text-sm text-gray-600 mt-1">
                   {coloniaLuminarias.length} lámpara{coloniaLuminarias.length !== 1 && 's'} registrada{coloniaLuminarias.length !== 1 && 's'}
                 </p>
               </div>
               <button
                 onClick={closeModal}
-                className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                className="p-2 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0 ml-2"
               >
-                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
             {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               {coloniaLuminarias.length === 0 ? (
                 <div className="text-center py-12">
                   <svg className="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -492,17 +447,53 @@ export default function AdminPage() {
 
             {/* Modal Content */}
             <div className="flex-1 overflow-y-auto p-6">
-              {/* Image */}
-              {selectedLuminaria.imagen_url && (
-                <div className="mb-6 rounded-xl overflow-hidden border-2 border-gray-200 relative h-64">
-                  <Image 
-                    src={selectedLuminaria.imagen_url} 
-                    alt={`Lámpara ${selectedLuminaria.numero_poste}`}
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-              )}
+              {/* Images Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                {/* Imagen 1: Poste completo */}
+                {selectedLuminaria.imagen_url && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-gray-600 uppercase">Poste Completo</p>
+                    <div className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-48">
+                      <Image 
+                        src={selectedLuminaria.imagen_url} 
+                        alt="Poste completo"
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Imagen 2: Watts */}
+                {selectedLuminaria.imagen_watts_url && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-gray-600 uppercase">Watts</p>
+                    <div className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-48">
+                      <Image 
+                        src={selectedLuminaria.imagen_watts_url} 
+                        alt="Watts"
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Imagen 3: Fotocelda */}
+                {selectedLuminaria.imagen_fotocelda_url && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-gray-600 uppercase">Fotocelda</p>
+                    <div className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-48">
+                      <Image 
+                        src={selectedLuminaria.imagen_fotocelda_url} 
+                        alt="Fotocelda"
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Info Grid */}
               <div className="space-y-4">
@@ -521,6 +512,15 @@ export default function AdminPage() {
                   icon={
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  }
+                />
+                <InfoField 
+                  label="Fotocelda Nueva" 
+                  value={selectedLuminaria.fotocelda_nueva ? 'Sí (Capucha Azul)' : 'No'}
+                  icon={
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
                   }
                 />
@@ -613,14 +613,14 @@ export default function AdminPage() {
 // Componentes auxiliares
 function StatCard({ title, value, icon, color }: { title: string; value: number; icon: React.ReactNode; color: string }) {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 transition-all hover:shadow-md">
-      <div className="flex items-center justify-between mb-4">
-        <div className={`flex items-center justify-center w-12 h-12 ${color} rounded-lg text-white`}>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 transition-all hover:shadow-md">
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <div className={`flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 ${color} rounded-lg text-white`}>
           {icon}
         </div>
       </div>
-      <h3 className="text-sm font-medium text-gray-600 mb-1">{title}</h3>
-      <p className="text-3xl font-bold text-gray-900">{value}</p>
+      <h3 className="text-xs sm:text-sm font-medium text-gray-600 mb-1">{title}</h3>
+      <p className="text-2xl sm:text-3xl font-bold text-gray-900">{value}</p>
     </div>
   )
 }

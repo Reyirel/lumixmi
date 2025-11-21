@@ -28,6 +28,9 @@ export type Luminaria = {
   latitud: number
   longitud: number
   imagen_url: string | null
+  imagen_watts_url: string | null
+  imagen_fotocelda_url: string | null
+  fotocelda_nueva: boolean
   created_at: string
   updated_at: string
 }

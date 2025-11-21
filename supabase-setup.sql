@@ -27,6 +27,9 @@ CREATE TABLE luminarias (
   latitud DOUBLE PRECISION NOT NULL,
   longitud DOUBLE PRECISION NOT NULL,
   imagen_url TEXT,
+  imagen_watts_url TEXT,
+  imagen_fotocelda_url TEXT,
+  fotocelda_nueva BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

@@ -65,6 +65,9 @@ export async function POST(request: Request) {
       latitud: parseFloat(latitud),
       longitud: parseFloat(longitud),
       imagen_url: body.imagen_url || null,
+      imagen_watts_url: body.imagen_watts_url || null,
+      imagen_fotocelda_url: body.imagen_fotocelda_url || null,
+      fotocelda_nueva: body.fotocelda_nueva || false,
     }
 
     // Insertar en Supabase
