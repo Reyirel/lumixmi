@@ -513,7 +513,7 @@ export default function FormPage() {
                         alert(`✅ ${result.success} registro(s) sincronizado(s)`)
                       }
                       await updatePendingCount()
-                    } catch (error) {
+                    } catch {
                       alert('❌ Error al sincronizar')
                     }
                   }}
