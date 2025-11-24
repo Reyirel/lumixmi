@@ -12,6 +12,8 @@
 - Las APIs ahora siempre retornan JSON válido, incluso en caso de error de configuración
 - Mejorado el manejo de errores en el frontend para verificar que las respuestas sean JSON válido
 
+dfsghdfg
+
 ### 2. ❌ Error: "The string did not match the expected pattern"
 
 **Causa:** El campo número de poste permitía caracteres especiales que causaban problemas de validación.
