@@ -2,6 +2,10 @@
 
 import React, { useEffect, useState } from 'react'
 import Image from 'next/image'
+import { useOnlineStatus } from '@/lib/useOnlineStatus'
+import { saveOfflineRecord, fileToBlob, getPendingCount } from '@/lib/offlineStorage'
+import { useAutoSync, syncAllPendingRecords } from '@/lib/syncService'
+import { NotificationPermission } from '@/lib/NotificationPermission'
 
 type Colonia = {
   id: number
@@ -24,13 +28,36 @@ export default function FormPage() {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [isLoadingLocation, setIsLoadingLocation] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
+  
+  // Hooks personalizados para offline
+  const isOnline = useOnlineStatus()
+  const syncPending = useAutoSync(isOnline)
 
   useEffect(() => {
     fetch('/api/colonias')
       .then((r) => r.json())
       .then((data) => setColonias(data))
       .catch((e) => console.error('Error cargando colonias', e))
+    
+    // Cargar contador de registros pendientes
+    updatePendingCount()
   }, [])
+
+  // Actualizar contador de registros pendientes
+  const updatePendingCount = async () => {
+    const count = await getPendingCount()
+    setPendingCount(count)
+  }
+
+  // Auto-sincronizar cuando se detecta conexión
+  useEffect(() => {
+    if (isOnline) {
+      syncPending().then(() => {
+        updatePendingCount()
+      })
+    }
+  }, [isOnline, syncPending])
 
   useEffect(() => {
     if (!image) {
@@ -79,20 +106,58 @@ export default function FormPage() {
 
   function useGeolocation() {
     if (!('geolocation' in navigator)) {
-      alert('Geolocalización no soportada')
+      alert('❌ Tu navegador no soporta geolocalización.\n\nPor favor ingresa las coordenadas manualmente.')
       return
     }
+    
     setIsLoadingLocation(true)
+    
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
         setIsLoadingLocation(false)
+        console.log('✅ Ubicación obtenida:', pos.coords)
       },
       (err) => {
-        alert('Error obteniendo ubicación: ' + err.message)
         setIsLoadingLocation(false)
+        console.error('Error de geolocalización:', err)
+        
+        let mensaje = '❌ Error obteniendo ubicación:\n\n'
+        
+        // Mensajes específicos según el código de error
+        switch(err.code) {
+          case err.PERMISSION_DENIED:
+            mensaje += '🔒 Permisos denegados.\n\n'
+            mensaje += '⚠️ IMPORTANTE: Estás usando HTTP en lugar de HTTPS.\n'
+            mensaje += 'La geolocalización requiere:\n'
+            mensaje += '• HTTPS (conexión segura), O\n'
+            mensaje += '• Acceder desde localhost\n\n'
+            mensaje += '💡 SOLUCIÓN:\n'
+            mensaje += '1. Accede desde el mismo dispositivo usando: http://localhost:3000/form\n'
+            mensaje += '2. O activa el GPS y da permisos en la configuración del navegador\n'
+            mensaje += '3. O ingresa las coordenadas manualmente abajo'
+            break
+          case err.POSITION_UNAVAILABLE:
+            mensaje += 'No se puede determinar la ubicación.\n'
+            mensaje += 'Verifica que el GPS esté activado.\n\n'
+            mensaje += 'Puedes ingresar las coordenadas manualmente.'
+            break
+          case err.TIMEOUT:
+            mensaje += 'Tiempo de espera agotado.\n\n'
+            mensaje += 'Intenta nuevamente o ingresa las coordenadas manualmente.'
+            break
+          default:
+            mensaje += err.message + '\n\n'
+            mensaje += 'Puedes ingresar las coordenadas manualmente.'
+        }
+        
+        alert(mensaje)
       },
-      { enableHighAccuracy: true }
+      { 
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
     )
   }
 
@@ -133,6 +198,40 @@ export default function FormPage() {
     setIsSubmitting(true)
     
     try {
+      // Si no hay conexión, guardar offline
+      if (!isOnline) {
+        console.log('📡 Sin conexión - Guardando registro offline...')
+        
+        // Convertir Files a Blobs
+        const imagenBlob = await fileToBlob(image)
+        const imagenWattsBlob = await fileToBlob(imageWatts)
+        const imagenFotoceldaBlob = await fileToBlob(imageFotocelda)
+        
+        await saveOfflineRecord({
+          colonia_id: selectedColonia,
+          numero_poste: poste,
+          watts,
+          latitud: coords.lat,
+          longitud: coords.lng,
+          imagen: imagenBlob,
+          imagen_watts: imagenWattsBlob,
+          imagen_fotocelda: imagenFotoceldaBlob,
+          fotocelda_nueva: fotoceldaNueva === 'si',
+        })
+        
+        alert('💾 Registro guardado offline. Se enviará automáticamente cuando tengas conexión.')
+        
+        // Actualizar contador
+        await updatePendingCount()
+        
+        // Limpiar formulario
+        resetForm()
+        return
+      }
+      
+      // Si hay conexión, enviar normalmente
+      console.log('🌐 Con conexión - Enviando registro...')
+      
       // Paso 1: Subir las 3 imágenes
       const uploadPromises = [
         fetch('/api/upload', {
@@ -209,29 +308,122 @@ export default function FormPage() {
       alert('✅ Luminaria registrada exitosamente con 3 imágenes!')
       
       // Limpiar el formulario
-      setSelectedColonia(null)
-      setPoste('')
-      setWatts(25)
-      setCoords(null)
-      setImage(null)
-      setImageWatts(null)
-      setImageFotocelda(null)
-      setPreview(null)
-      setPreviewWatts(null)
-      setPreviewFotocelda(null)
-      setFotoceldaNueva('no')
+      resetForm()
       
     } catch (error) {
       console.error('Error al enviar formulario:', error)
-      alert('❌ Error: ' + (error instanceof Error ? error.message : 'Error desconocido'))
+      
+      // Si falla el envío online, preguntar si guardar offline
+      if (isOnline) {
+        const saveOffline = confirm(
+          '❌ Error al enviar el registro. ¿Deseas guardarlo offline para enviarlo después?'
+        )
+        
+        if (saveOffline && image && imageWatts && imageFotocelda) {
+          try {
+            const imagenBlob = await fileToBlob(image)
+            const imagenWattsBlob = await fileToBlob(imageWatts)
+            const imagenFotoceldaBlob = await fileToBlob(imageFotocelda)
+            
+            await saveOfflineRecord({
+              colonia_id: selectedColonia!,
+              numero_poste: poste,
+              watts,
+              latitud: coords!.lat,
+              longitud: coords!.lng,
+              imagen: imagenBlob,
+              imagen_watts: imagenWattsBlob,
+              imagen_fotocelda: imagenFotoceldaBlob,
+              fotocelda_nueva: fotoceldaNueva === 'si',
+            })
+            
+            alert('💾 Registro guardado offline.')
+            await updatePendingCount()
+            resetForm()
+          } catch (offlineError) {
+            console.error('Error guardando offline:', offlineError)
+            alert('❌ No se pudo guardar el registro')
+          }
+        }
+      } else {
+        alert('❌ Error: ' + (error instanceof Error ? error.message : 'Error desconocido'))
+      }
     } finally {
       setIsSubmitting(false)
     }
   }
+  
+  function resetForm() {
+    setSelectedColonia(null)
+    setPoste('')
+    setWatts(25)
+    setCoords(null)
+    setImage(null)
+    setImageWatts(null)
+    setImageFotocelda(null)
+    setPreview(null)
+    setPreviewWatts(null)
+    setPreviewFotocelda(null)
+    setFotoceldaNueva('no')
+  }
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
+      {/* Banner de notificaciones */}
+      <NotificationPermission />
+      
       <div className="max-w-3xl mx-auto">
+        {/* Indicador de conexión */}
+        <div className={`mb-4 p-4 rounded-lg flex items-center justify-between ${
+          isOnline 
+            ? 'bg-green-50 border-l-4 border-green-500' 
+            : 'bg-yellow-50 border-l-4 border-yellow-500'
+        }`}>
+          <div className="flex items-center space-x-3">
+            {isOnline ? (
+              <>
+                <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-green-700 font-medium">Conectado</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span className="text-yellow-700 font-medium">Sin conexión - Modo offline</span>
+              </>
+            )}
+          </div>
+          
+          {pendingCount > 0 && (
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600">
+                {pendingCount} registro{pendingCount > 1 ? 's' : ''} pendiente{pendingCount > 1 ? 's' : ''}
+              </span>
+              {isOnline && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const result = await syncAllPendingRecords()
+                      if (result.success > 0) {
+                        alert(`✅ ${result.success} registro(s) sincronizado(s)`)
+                      }
+                      await updatePendingCount()
+                    } catch (error) {
+                      alert('❌ Error al sincronizar')
+                    }
+                  }}
+                  className="px-3 py-1 bg-blue-500 text-white text-xs font-medium rounded hover:bg-blue-600 transition-colors"
+                >
+                  Sincronizar ahora
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        
         {/* Header */}
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
@@ -432,6 +624,26 @@ export default function FormPage() {
               <label className="block text-sm font-semibold text-gray-900">
                 Ubicación GPS
               </label>
+              
+              {/* Aviso importante sobre HTTPS */}
+              {!window.isSecureContext && (
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded-lg mb-3">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-yellow-700">
+                        <strong>GPS automático no disponible:</strong> Estás usando HTTP en lugar de HTTPS. 
+                        Puedes ingresar las coordenadas manualmente abajo.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <button
                 type="button"
                 onClick={useGeolocation}
@@ -452,7 +664,7 @@ export default function FormPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    Obtener ubicación actual
+                    Obtener ubicación automática
                   </>
                 )}
               </button>
@@ -460,7 +672,7 @@ export default function FormPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-2">
-                    Latitud
+                    Latitud {!coords?.lat && <span className="text-red-500">*</span>}
                   </label>
                   <input
                     type="number"
@@ -473,10 +685,11 @@ export default function FormPage() {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent transition-all outline-none text-gray-900"
                     required
                   />
+                  <p className="text-xs text-gray-500 mt-1">Ejemplo: -12.046374</p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-2">
-                    Longitud
+                    Longitud {!coords?.lng && <span className="text-red-500">*</span>}
                   </label>
                   <input
                     type="number"
@@ -489,8 +702,30 @@ export default function FormPage() {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent transition-all outline-none text-gray-900"
                     required
                   />
+                  <p className="text-xs text-gray-500 mt-1">Ejemplo: -77.042793</p>
                 </div>
               </div>
+              
+              {/* Ayuda para obtener coordenadas */}
+              <details className="mt-3 bg-blue-50 rounded-lg p-3">
+                <summary className="cursor-pointer text-sm font-medium text-blue-900">
+                  💡 ¿Cómo obtener coordenadas manualmente?
+                </summary>
+                <div className="mt-2 space-y-2 text-xs text-blue-800">
+                  <p><strong>Opción 1 - Google Maps:</strong></p>
+                  <ol className="list-decimal list-inside ml-2 space-y-1">
+                    <li>Abre Google Maps en tu teléfono</li>
+                    <li>Mantén presionado en tu ubicación</li>
+                    <li>Copia las coordenadas que aparecen</li>
+                  </ol>
+                  <p className="mt-2"><strong>Opción 2 - App GPS:</strong></p>
+                  <ol className="list-decimal list-inside ml-2 space-y-1">
+                    <li>Usa una app de GPS (GPS Status, GPS Test)</li>
+                    <li>Lee las coordenadas mostradas</li>
+                    <li>Introdúcelas en los campos arriba</li>
+                  </ol>
+                </div>
+              </details>
             </div>
 
             {/* Sección: Especificaciones técnicas */}
