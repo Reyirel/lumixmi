@@ -35,6 +35,144 @@ type WattGroup = {
   luminarias: Luminaria[]
 }
 
+// Metas de lámparas por comunidad
+const METAS_LAMPARAS: { [key: string]: number } = {
+  "Barrio de Progreso": 73,
+  "Col. Vista Hermosa": 46,
+  "Cruz Blanca": 46,
+  "El Deca": 92,
+  "La Loma López Rayón": 63,
+  "La Mesa López Rayón": 27,
+  "Ignacio López Rayón": 113,
+  "El Dextli Alberto": 28,
+  "El Dextho": 108,
+  "El Mandho": 179,
+  "El Oro": 105,
+  "La Loma del Oro": 142,
+  "La Media Luna": 122,
+  "La Reforma": 304,
+  "Panales": 340,
+  "Santa Ana": 78,
+  "Cerritos Remedios": 171,
+  "Col. Samayoa": 29,
+  "El Espino": 117,
+  "Granaditas": 54,
+  "La Loma San Pedro Remedios": 50,
+  "Los Pinos Remedios": 51,
+  "Pozo Mirador": 70,
+  "Remedios": 187,
+  "San Nicolás": 583,
+  "Vázquez Remedios": 132,
+  "Col. Lázaro Cárdenas": 27,
+  "Boxhuada": 49,
+  "El Banxu": 73,
+  "El Huacri": 54,
+  "El Meje": 20,
+  "El Nandho": 12,
+  "La Lagunita": 36,
+  "La Palma Orizabita": 29,
+  "La Pechuga": 40,
+  "Las Emes": 5,
+  "Naxthey San Juanico": 37,
+  "Ojuelo": 9,
+  "Orizabita": 249,
+  "San Andrés Orizabita": 74,
+  "Villa de la Paz": 62,
+  "Xaxni": 4,
+  "Barrio de Jesús": 103,
+  "Barrio de San Antonio": 75,
+  "Bondho": 75,
+  "Col. 20 de Noviembre": 62,
+  "Col. Benito Juárez": 140,
+  "Col. Santa Alicia": 28,
+  "Col. Vicente Guerrero": 38,
+  "El Calvario": 77,
+  "El Carmen": 64,
+  "El Carrizal": 139,
+  "Fracc. Joaquín Baranda": 69,
+  "Fracc. Valle de San Javier": 147,
+  "San Miguel": 121,
+  "Canada Chica": 207,
+  "Col. Felipe Ángeles J.V.": 42,
+  "Col. Independencia J.V.": 13,
+  "El Tablon": 68,
+  "El Te-Pathe": 58,
+  "El Tephe": 519,
+  "Ex-Hacienda de Ocotza J.V.": 113,
+  "Julian Villagran Centro": 141,
+  "La Loma Julián Villagrán": 63,
+  "La Loma Pueblo Nuevo": 74,
+  "Loma Centro Julián Villagrán": 80,
+  "Maguey Blanco": 412,
+  "Pueblo Nuevo": 142,
+  "Taxoho": 197,
+  "Cantinela": 124,
+  "Col. Miguel Hidalgo": 140,
+  "Dios Padre": 132,
+  "El Alberto": 78,
+  "El Barrido": 156,
+  "El Fitzhi": 585,
+  "El Maye": 292,
+  "El Valante": 68,
+  "Arenalito Remedios": 138,
+  "Bangandho": 92,
+  "Botenguedho": 121,
+  "Capula": 231,
+  "Cerrito Capula": 52,
+  "Col. La Joya": 65,
+  "Col. La Libertad": 64,
+  "Col. Valle de los Remedios - El Mirador Capula": 117,
+  "El Nith": 347,
+  "El Rosario Capula": 34,
+  "Ex-Hacienda Debodhe": 89,
+  "Jagüey de Vázquez Capula": 76,
+  "Jahuey Capula": 76,
+  "La Estación": 100,
+  "La Huerta Capula": 77,
+  "La Loma de la Cruz": 12,
+  "La Palma": 66,
+  "Puerto Bangandho": 79,
+  "San Pedro Capula": 101,
+  "Cantamaye": 6,
+  "Col. Gral. Felipe Ángeles": 223,
+  "El Bojay": 9,
+  "El Dexthi San Juanico": 72,
+  "El Durazno": 144,
+  "La Heredad": 113,
+  "Los Martínez": 7,
+  "Puerto Dexthi": 89,
+  "San Juanico": 58,
+  "Ustheje": 19,
+}
+
+// Función para normalizar nombres de comunidades para comparación
+const normalizeName = (name: string): string => {
+  return name
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9\s]/g, "")
+    .trim()
+}
+
+// Función para obtener la meta de una comunidad
+const getMetaForColonia = (nombreColonia: string): number | null => {
+  // Primero buscar coincidencia exacta
+  if (METAS_LAMPARAS[nombreColonia]) {
+    return METAS_LAMPARAS[nombreColonia]
+  }
+  
+  // Si no hay coincidencia exacta, buscar con normalización
+  const normalizedInput = normalizeName(nombreColonia)
+  for (const [key, value] of Object.entries(METAS_LAMPARAS)) {
+    if (normalizeName(key) === normalizedInput) {
+      return value
+    }
+  }
+  
+  return null
+}
+
 export default function AdminPage() {
   const router = useRouter()
   const [colonias, setColonias] = useState<Colonia[]>([])
@@ -288,6 +426,11 @@ export default function AdminPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {filteredColonias.map(colonia => {
               const lumCount = getLuminariasForColonia(colonia.id).length
+              const meta = getMetaForColonia(colonia.nombre)
+              const porcentaje = meta ? Math.min((lumCount / meta) * 100, 100) : 0
+              const excedido = meta ? lumCount > meta : false
+              const porcentajeReal = meta ? (lumCount / meta) * 100 : 0
+              
               return (
                 <div
                   key={colonia.id}
@@ -310,9 +453,60 @@ export default function AdminPage() {
                     </div>
                   </div>
                   
-                  <div className="flex items-center justify-between pt-3 sm:pt-4 border-t border-gray-100">
+                  {/* Barra de progreso */}
+                  {meta && (
+                    <div className="mb-3 sm:mb-4">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-gray-500">Progreso</span>
+                        <span className={`text-xs font-semibold ${excedido ? 'text-red-600' : porcentajeReal >= 100 ? 'text-green-600' : 'text-gray-600'}`}>
+                          {porcentajeReal.toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                        <div 
+                          className={`h-2.5 rounded-full transition-all duration-500 ${
+                            excedido 
+                              ? 'bg-red-500' 
+                              : porcentajeReal >= 100 
+                                ? 'bg-green-500' 
+                                : porcentajeReal >= 75 
+                                  ? 'bg-yellow-500' 
+                                  : 'bg-blue-500'
+                          }`}
+                          style={{ width: `${porcentaje}%` }}
+                        ></div>
+                      </div>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-xs text-gray-500">{lumCount} / {meta}</span>
+                        {excedido && (
+                          <span className="text-xs font-semibold text-red-600 flex items-center">
+                            <svg className="w-3 h-3 mr-0.5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                            +{lumCount - meta} excedido
+                          </span>
+                        )}
+                        {!excedido && porcentajeReal >= 100 && (
+                          <span className="text-xs font-semibold text-green-600 flex items-center">
+                            <svg className="w-3 h-3 mr-0.5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            Completado
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className={`flex items-center justify-between pt-3 sm:pt-4 border-t border-gray-100 ${!meta ? '' : ''}`}>
                     <span className="text-xs sm:text-sm font-medium text-gray-600">Total de lámparas</span>
-                    <span className="inline-flex items-center justify-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold bg-black text-white">
+                    <span className={`inline-flex items-center justify-center px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold ${
+                      excedido 
+                        ? 'bg-red-100 text-red-700' 
+                        : meta && porcentajeReal >= 100 
+                          ? 'bg-green-100 text-green-700' 
+                          : 'bg-black text-white'
+                    }`}>
                       {lumCount}
                     </span>
                   </div>
@@ -334,7 +528,13 @@ export default function AdminPage() {
       </div>
 
       {/* Modal Comunidad */}
-      {selectedColonia && (
+      {selectedColonia && (() => {
+        const metaModal = getMetaForColonia(selectedColonia.nombre)
+        const porcentajeModal = metaModal ? Math.min((coloniaLuminarias.length / metaModal) * 100, 100) : 0
+        const excedidoModal = metaModal ? coloniaLuminarias.length > metaModal : false
+        const porcentajeRealModal = metaModal ? (coloniaLuminarias.length / metaModal) * 100 : 0
+        
+        return (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4 animate-fadeIn"
           onClick={closeModal}
@@ -349,7 +549,58 @@ export default function AdminPage() {
                 <h2 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">{selectedColonia.nombre}</h2>
                 <p className="text-xs sm:text-sm text-gray-600 mt-1">
                   {coloniaLuminarias.length} lámpara{coloniaLuminarias.length !== 1 && 's'} registrada{coloniaLuminarias.length !== 1 && 's'}
+                  {metaModal && ` de ${metaModal} (meta)`}
                 </p>
+                
+                {/* Barra de progreso en el modal */}
+                {metaModal && (
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-500">Progreso de instalación</span>
+                      <span className={`text-xs font-semibold ${excedidoModal ? 'text-red-600' : porcentajeRealModal >= 100 ? 'text-green-600' : 'text-gray-600'}`}>
+                        {porcentajeRealModal.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                      <div 
+                        className={`h-3 rounded-full transition-all duration-500 ${
+                          excedidoModal 
+                            ? 'bg-red-500' 
+                            : porcentajeRealModal >= 100 
+                              ? 'bg-green-500' 
+                              : porcentajeRealModal >= 75 
+                                ? 'bg-yellow-500' 
+                                : 'bg-blue-500'
+                        }`}
+                        style={{ width: `${porcentajeModal}%` }}
+                      ></div>
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-xs text-gray-500">{coloniaLuminarias.length} / {metaModal} lámparas</span>
+                      {excedidoModal && (
+                        <span className="text-xs font-semibold text-red-600 flex items-center">
+                          <svg className="w-3 h-3 mr-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          Excedido por {coloniaLuminarias.length - metaModal} lámparas
+                        </span>
+                      )}
+                      {!excedidoModal && porcentajeRealModal >= 100 && (
+                        <span className="text-xs font-semibold text-green-600 flex items-center">
+                          <svg className="w-3 h-3 mr-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          ¡Meta alcanzada!
+                        </span>
+                      )}
+                      {!excedidoModal && porcentajeRealModal < 100 && (
+                        <span className="text-xs text-gray-500">
+                          Faltan {metaModal - coloniaLuminarias.length} lámparas
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               <button
                 onClick={closeModal}
@@ -450,7 +701,8 @@ export default function AdminPage() {
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* Modal Detalle Luminaria */}
       {selectedLuminaria && (
