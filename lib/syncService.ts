@@ -6,7 +6,11 @@ import {
   deleteRecord,
   blobToFile,
   getPendingCount,
+  isRecordSynced,
 } from './offlineStorage';
+
+// Variable para evitar sincronizaciones concurrentes
+let isSyncing = false;
 
 // Función para sincronizar un registro pendiente
 export async function syncRecord(record: {
@@ -21,6 +25,15 @@ export async function syncRecord(record: {
   imagen_fotocelda: Blob;
   fotocelda_nueva: boolean;
 }) {
+  // Verificar si el registro ya está sincronizado antes de proceder
+  if (record.id) {
+    const alreadySynced = await isRecordSynced(record.id);
+    if (alreadySynced) {
+      console.log(`⏭️ Registro ${record.id} ya está sincronizado, saltando...`);
+      return true;
+    }
+  }
+
   try {
     // Convertir Blobs a Files
     const imageFile = blobToFile(record.imagen, `luminaria-${record.numero_poste}.jpg`);
@@ -111,39 +124,62 @@ export async function syncRecord(record: {
 
 // Función para sincronizar todos los registros pendientes
 export async function syncAllPendingRecords() {
-  const pendingRecords = await getPendingRecords();
-  
-  if (pendingRecords.length === 0) {
-    console.log('✅ No hay registros pendientes para sincronizar');
-    return { success: 0, failed: 0 };
+  // Evitar sincronizaciones concurrentes
+  if (isSyncing) {
+    console.log('⚠️ Ya hay una sincronización en proceso, saltando...');
+    return { success: 0, failed: 0, skipped: 0 };
   }
 
-  console.log(`🔄 Sincronizando ${pendingRecords.length} registros pendientes...`);
+  isSyncing = true;
 
-  let successCount = 0;
-  let failedCount = 0;
+  try {
+    const pendingRecords = await getPendingRecords();
+    
+    if (pendingRecords.length === 0) {
+      console.log('✅ No hay registros pendientes para sincronizar');
+      return { success: 0, failed: 0, skipped: 0 };
+    }
 
-  for (const record of pendingRecords) {
-    try {
-      console.log(`🔄 Procesando registro ${record.id}: Poste ${record.numero_poste}`);
-      await syncRecord(record);
-      successCount++;
-      console.log(`✅ Registro ${record.id} (Poste: ${record.numero_poste}) sincronizado exitosamente`);
-      
-      // NO eliminamos el registro, solo lo marcamos como sincronizado
-      // Esto permite mantener un historial y verificar qué se ha sincronizado
-    } catch (error) {
-      failedCount++;
-      console.error(`❌ Error sincronizando registro ${record.id} (Poste: ${record.numero_poste}):`, error);
-      if (error instanceof Error) {
-        console.error(`Detalles: ${error.message}`);
+    console.log(`🔄 Sincronizando ${pendingRecords.length} registros pendientes...`);
+
+    let successCount = 0;
+    let failedCount = 0;
+    let skippedCount = 0;
+
+    for (const record of pendingRecords) {
+      try {
+        // Verificación doble: comprobar si ya está sincronizado
+        if (record.id) {
+          const alreadySynced = await isRecordSynced(record.id);
+          if (alreadySynced) {
+            console.log(`⏭️ Registro ${record.id} ya sincronizado, saltando...`);
+            skippedCount++;
+            continue;
+          }
+        }
+
+        console.log(`🔄 Procesando registro ${record.id}: Poste ${record.numero_poste}`);
+        await syncRecord(record);
+        successCount++;
+        console.log(`✅ Registro ${record.id} (Poste: ${record.numero_poste}) sincronizado exitosamente`);
+        
+        // NO eliminamos el registro, solo lo marcamos como sincronizado
+        // Esto permite mantener un historial y verificar qué se ha sincronizado
+      } catch (error) {
+        failedCount++;
+        console.error(`❌ Error sincronizando registro ${record.id} (Poste: ${record.numero_poste}):`, error);
+        if (error instanceof Error) {
+          console.error(`Detalles: ${error.message}`);
+        }
       }
     }
-  }
 
-  console.log(`📊 Sincronización completada: ${successCount} éxito, ${failedCount} fallos`);
-  
-  return { success: successCount, failed: failedCount };
+    console.log(`📊 Sincronización completada: ${successCount} éxito, ${failedCount} fallos, ${skippedCount} saltados`);
+    
+    return { success: successCount, failed: failedCount, skipped: skippedCount };
+  } finally {
+    isSyncing = false;
+  }
 }
 
 // Hook para auto-sincronización cuando se detecta conexión

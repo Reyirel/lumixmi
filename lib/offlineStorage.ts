@@ -14,6 +14,7 @@ type PendingLuminaria = {
   fotocelda_nueva: boolean;
   timestamp: number;
   synced: boolean;
+  hash?: string; // Identificador único basado en los datos
 };
 
 const DB_NAME = 'lumixmi-offline';
@@ -36,6 +37,44 @@ export async function initDB(): Promise<IDBPDatabase> {
   });
 }
 
+// Generar un identificador único para un registro basado en sus datos
+function generateRecordHash(data: {
+  colonia_id: number;
+  numero_poste: string;
+  watts: number;
+  latitud: number;
+  longitud: number;
+}): string {
+  return `${data.colonia_id}-${data.numero_poste}-${data.watts}-${data.latitud.toFixed(6)}-${data.longitud.toFixed(6)}`;
+}
+
+// Verificar si ya existe un registro similar pendiente (para evitar duplicados)
+export async function existsSimilarPendingRecord(data: {
+  colonia_id: number;
+  numero_poste: string;
+  watts: number;
+  latitud: number;
+  longitud: number;
+}): Promise<boolean> {
+  const db = await initDB();
+  const allRecords = await db.getAll('pendingLuminarias');
+  const newHash = generateRecordHash(data);
+  
+  // Buscar si existe un registro con los mismos datos que aún no ha sido sincronizado
+  const existingRecord = allRecords.find((record: PendingLuminaria) => {
+    const existingHash = generateRecordHash({
+      colonia_id: record.colonia_id,
+      numero_poste: record.numero_poste,
+      watts: record.watts,
+      latitud: record.latitud,
+      longitud: record.longitud,
+    });
+    return existingHash === newHash && !record.synced;
+  });
+  
+  return !!existingRecord;
+}
+
 // Guardar un registro offline
 export async function saveOfflineRecord(data: {
   colonia_id: number;
@@ -49,10 +88,19 @@ export async function saveOfflineRecord(data: {
   fotocelda_nueva: boolean;
 }) {
   const db = await initDB();
+  
+  // Verificar si ya existe un registro similar pendiente
+  const exists = await existsSimilarPendingRecord(data);
+  if (exists) {
+    console.log('⚠️ Ya existe un registro similar pendiente, no se guardará duplicado');
+    return null;
+  }
+  
   const record = {
     ...data,
     timestamp: Date.now(),
     synced: false,
+    hash: generateRecordHash(data), // Añadir hash para identificación única
   };
   
   const id = await db.add('pendingLuminarias', record);
@@ -64,9 +112,17 @@ export async function saveOfflineRecord(data: {
 export async function getPendingRecords(): Promise<PendingLuminaria[]> {
   const db = await initDB();
   const allRecords = await db.getAll('pendingLuminarias');
-  const pendingRecords = allRecords.filter((record: PendingLuminaria) => !record.synced);
+  // Filtrar solo registros que NO están sincronizados (synced === false o undefined)
+  const pendingRecords = allRecords.filter((record: PendingLuminaria) => record.synced !== true);
   console.log(`📊 Total de registros en DB: ${allRecords.length}, Pendientes: ${pendingRecords.length}`);
   return pendingRecords;
+}
+
+// Verificar si un registro específico ya está sincronizado
+export async function isRecordSynced(id: number): Promise<boolean> {
+  const db = await initDB();
+  const record = await db.get('pendingLuminarias', id);
+  return record ? record.synced === true : false;
 }
 
 // Marcar un registro como sincronizado

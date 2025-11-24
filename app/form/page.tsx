@@ -225,7 +225,7 @@ export default function FormPage() {
         const imagenWattsBlob = await fileToBlob(imageWatts)
         const imagenFotoceldaBlob = await fileToBlob(imageFotocelda)
         
-        await saveOfflineRecord({
+        const savedId = await saveOfflineRecord({
           colonia_id: selectedColonia,
           numero_poste: poste,
           watts,
@@ -237,7 +237,11 @@ export default function FormPage() {
           fotocelda_nueva: fotoceldaNueva === 'si',
         })
         
-        alert('💾 Registro guardado offline. Se enviará automáticamente cuando tengas conexión.')
+        if (savedId === null) {
+          alert('⚠️ Ya existe un registro similar pendiente de sincronización. No se guardará duplicado.')
+        } else {
+          alert('💾 Registro guardado offline. Se enviará automáticamente cuando tengas conexión.')
+        }
         
         // Actualizar contador
         await updatePendingCount()
@@ -427,7 +431,7 @@ export default function FormPage() {
             const imagenWattsBlob = await fileToBlob(imageWatts)
             const imagenFotoceldaBlob = await fileToBlob(imageFotocelda)
             
-            await saveOfflineRecord({
+            const savedId = await saveOfflineRecord({
               colonia_id: selectedColonia!,
               numero_poste: poste,
               watts,
@@ -439,7 +443,11 @@ export default function FormPage() {
               fotocelda_nueva: fotoceldaNueva === 'si',
             })
             
-            alert('💾 Registro guardado offline.')
+            if (savedId === null) {
+              alert('⚠️ Ya existe un registro similar pendiente de sincronización.')
+            } else {
+              alert('💾 Registro guardado offline.')
+            }
             await updatePendingCount()
             resetForm()
           } catch (offlineError) {

@@ -45,6 +45,35 @@ export default function AdminPage() {
   const [selectedLuminaria, setSelectedLuminaria] = useState<Luminaria | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null)
+  const [imageErrors, setImageErrors] = useState<{[key: string]: boolean}>({})
+
+  // Función para verificar si una URL de imagen es válida
+  const isValidImageUrl = (url: string | null | undefined): boolean => {
+    if (!url) return false
+    if (typeof url !== 'string') return false
+    if (url.trim() === '') return false
+    // Verificar que sea una URL válida (http, https o data URI)
+    return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')
+  }
+
+  // Función para manejar errores de carga de imagen
+  const handleImageError = (imageKey: string) => {
+    console.log(`❌ Error cargando imagen: ${imageKey}`)
+    setImageErrors(prev => ({ ...prev, [imageKey]: true }))
+  }
+
+  // Función para resetear errores cuando cambia la luminaria seleccionada
+  useEffect(() => {
+    if (selectedLuminaria) {
+      setImageErrors({})
+      // Debug: mostrar URLs de imágenes
+      console.log('🖼️ URLs de imágenes:', {
+        poste: selectedLuminaria.imagen_url,
+        watts: selectedLuminaria.imagen_watts_url,
+        fotocelda: selectedLuminaria.imagen_fotocelda_url
+      })
+    }
+  }, [selectedLuminaria])
 
   useEffect(() => {
     // Verificar autenticación
@@ -451,73 +480,79 @@ export default function AdminPage() {
               {/* Images Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 {/* Imagen 1: Poste completo */}
-                {selectedLuminaria.imagen_url && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-gray-700 uppercase">Poste Completo</p>
-                    <div 
-                      className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-64 md:h-72 cursor-pointer hover:border-black transition-all hover:shadow-lg group"
-                      onClick={() => setFullscreenImage(selectedLuminaria.imagen_url)}
-                    >
-                      <Image 
-                        src={selectedLuminaria.imagen_url} 
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-700 uppercase">Poste Completo</p>
+                  <div 
+                    className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-64 md:h-72 cursor-pointer hover:border-black transition-all bg-white"
+                    onClick={() => isValidImageUrl(selectedLuminaria.imagen_url) && !imageErrors['poste'] && setFullscreenImage(selectedLuminaria.imagen_url)}
+                  >
+                    {isValidImageUrl(selectedLuminaria.imagen_url) && !imageErrors['poste'] ? (
+                      <img 
+                        src={selectedLuminaria.imagen_url!} 
                         alt="Poste completo"
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-contain"
+                        onError={() => handleImageError('poste')}
                       />
-                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
-                        <svg className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50">
+                        <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
+                        <span className="text-sm">Imagen no disponible</span>
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
+                </div>
 
                 {/* Imagen 2: Watts */}
-                {selectedLuminaria.imagen_watts_url && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-gray-700 uppercase">Watts</p>
-                    <div 
-                      className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-64 md:h-72 cursor-pointer hover:border-black transition-all hover:shadow-lg group"
-                      onClick={() => setFullscreenImage(selectedLuminaria.imagen_watts_url)}
-                    >
-                      <Image 
-                        src={selectedLuminaria.imagen_watts_url} 
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-700 uppercase">Watts</p>
+                  <div 
+                    className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-64 md:h-72 cursor-pointer hover:border-black transition-all bg-white"
+                    onClick={() => isValidImageUrl(selectedLuminaria.imagen_watts_url) && !imageErrors['watts'] && setFullscreenImage(selectedLuminaria.imagen_watts_url)}
+                  >
+                    {isValidImageUrl(selectedLuminaria.imagen_watts_url) && !imageErrors['watts'] ? (
+                      <img 
+                        src={selectedLuminaria.imagen_watts_url!} 
                         alt="Watts"
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-contain"
+                        onError={() => handleImageError('watts')}
                       />
-                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
-                        <svg className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50">
+                        <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
+                        <span className="text-sm">Imagen no disponible</span>
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
+                </div>
 
                 {/* Imagen 3: Fotocelda */}
-                {selectedLuminaria.imagen_fotocelda_url && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-gray-700 uppercase">Fotocelda</p>
-                    <div 
-                      className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-64 md:h-72 cursor-pointer hover:border-black transition-all hover:shadow-lg group"
-                      onClick={() => setFullscreenImage(selectedLuminaria.imagen_fotocelda_url)}
-                    >
-                      <Image 
-                        src={selectedLuminaria.imagen_fotocelda_url} 
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-700 uppercase">Fotocelda</p>
+                  <div 
+                    className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-64 md:h-72 cursor-pointer hover:border-black transition-all bg-white"
+                    onClick={() => isValidImageUrl(selectedLuminaria.imagen_fotocelda_url) && !imageErrors['fotocelda'] && setFullscreenImage(selectedLuminaria.imagen_fotocelda_url)}
+                  >
+                    {isValidImageUrl(selectedLuminaria.imagen_fotocelda_url) && !imageErrors['fotocelda'] ? (
+                      <img 
+                        src={selectedLuminaria.imagen_fotocelda_url!} 
                         alt="Fotocelda"
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-contain"
+                        onError={() => handleImageError('fotocelda')}
                       />
-                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
-                        <svg className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50">
+                        <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
+                        <span className="text-sm">Imagen no disponible</span>
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
 
               {/* Info Grid */}
@@ -617,15 +652,18 @@ export default function AdminPage() {
             </svg>
           </button>
           <div 
-            className="relative w-full h-full max-w-6xl max-h-[90vh] animate-scaleIn"
+            className="relative w-full h-full max-w-6xl max-h-[90vh] animate-scaleIn flex items-center justify-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <Image 
+            <img 
               src={fullscreenImage} 
               alt="Imagen en pantalla completa"
-              fill
-              className="object-contain"
-              sizes="(max-width: 1536px) 100vw, 1536px"
+              className="max-w-full max-h-full object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                target.parentElement!.innerHTML = '<div class="text-white text-center"><svg class="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><p>Error al cargar la imagen</p></div>';
+              }}
             />
           </div>
           <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-70 text-white px-4 py-2 rounded-full text-sm">
