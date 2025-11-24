@@ -4,14 +4,15 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Faltan las variables de entorno de Supabase. Asegúrate de tener NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en tu archivo .env.local'
-  )
-}
+// Verificar si Supabase está configurado
+export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey)
 
 // Cliente de Supabase para uso general (lado cliente y servidor)
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Si no está configurado, crear un cliente dummy que no funcionará
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder-key'
+)
 
 // Tipos TypeScript para las tablas
 export type Colonia = {

@@ -29,6 +29,7 @@ export default function FormPage() {
   const [isLoadingLocation, setIsLoadingLocation] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
+  const [isSecureContext, setIsSecureContext] = useState(true)
   
   // Hooks personalizados para offline
   const isOnline = useOnlineStatus()
@@ -36,9 +37,26 @@ export default function FormPage() {
 
   useEffect(() => {
     fetch('/api/colonias')
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) {
+          throw new Error('Error cargando colonias')
+        }
+        const contentType = r.headers.get('content-type')
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Respuesta inválida del servidor')
+        }
+        return r.json()
+      })
       .then((data) => setColonias(data))
-      .catch((e) => console.error('Error cargando colonias', e))
+      .catch((e) => {
+        console.error('Error cargando colonias', e)
+        alert('Error al cargar las colonias. Verifica tu conexión o contacta al administrador.')
+      })
+    
+    // Verificar si estamos en contexto seguro (HTTPS o localhost)
+    if (typeof window !== 'undefined') {
+      setIsSecureContext(window.isSecureContext)
+    }
     
     // Cargar contador de registros pendientes
     updatePendingCount()
@@ -262,17 +280,57 @@ export default function FormPage() {
 
       const uploadResponses = await Promise.all(uploadPromises)
 
-      // Verificar que todas las subidas fueron exitosas
-      for (const response of uploadResponses) {
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || 'Error al subir las imágenes')
+      // Verificar que todas las subidas fueron exitosas y parsear respuestas
+      const uploadResults = []
+      
+      for (let i = 0; i < uploadResponses.length; i++) {
+        const response = uploadResponses[i]
+        const imageName = i === 0 ? 'luminaria' : i === 1 ? 'watts' : 'fotocelda'
+        
+        try {
+          if (!response.ok) {
+            let errorMessage = `Error al subir imagen de ${imageName}`
+            
+            try {
+              const contentType = response.headers.get('content-type')
+              if (contentType && contentType.includes('application/json')) {
+                const errorData = await response.json()
+                errorMessage = errorData.error || errorMessage
+              } else {
+                const textResponse = await response.text()
+                console.error(`Respuesta no-JSON al subir ${imageName}:`, textResponse.substring(0, 200))
+                errorMessage = 'El servidor no está respondiendo correctamente. Intenta de nuevo.'
+              }
+            } catch (parseError) {
+              console.error(`Error parseando respuesta de ${imageName}:`, parseError)
+              errorMessage = 'Error de conexión con el servidor. Verifica tu red.'
+            }
+            
+            throw new Error(errorMessage)
+          }
+          
+          // Parsear respuesta exitosa
+          const contentType = response.headers.get('content-type')
+          if (!contentType || !contentType.includes('application/json')) {
+            const textResponse = await response.text()
+            console.error(`Respuesta no-JSON exitosa de ${imageName}:`, textResponse.substring(0, 200))
+            throw new Error('El servidor retornó una respuesta inválida. Contacta al administrador.')
+          }
+          
+          const result = await response.json()
+          uploadResults.push(result)
+          
+        } catch (error) {
+          // Si el error ya fue lanzado arriba, re-lanzarlo
+          if (error instanceof Error) {
+            throw error
+          }
+          // Error inesperado
+          throw new Error(`Error procesando imagen de ${imageName}`)
         }
       }
-
-      const [uploadResult1, uploadResult2, uploadResult3] = await Promise.all(
-        uploadResponses.map(r => r.json())
-      )
+      
+      const [uploadResult1, uploadResult2, uploadResult3] = uploadResults
 
       console.log('Imágenes subidas:', { uploadResult1, uploadResult2, uploadResult3 })
 
@@ -297,12 +355,56 @@ export default function FormPage() {
         body: JSON.stringify(payload),
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Error al enviar el formulario')
+      let result
+      
+      try {
+        const contentType = response.headers.get('content-type')
+        
+        if (!response.ok) {
+          let errorMessage = 'Error al registrar la luminaria'
+          
+          if (contentType && contentType.includes('application/json')) {
+            try {
+              const errorData = await response.json()
+              errorMessage = errorData.error || errorMessage
+            } catch (jsonError) {
+              console.error('Error parseando JSON de error:', jsonError)
+              errorMessage = 'Error de conexión con el servidor'
+            }
+          } else {
+            const textResponse = await response.text()
+            console.error('Respuesta no-JSON del servidor:', textResponse.substring(0, 200))
+            
+            // Detectar errores comunes de Next.js en producción
+            if (textResponse.includes('404') || textResponse.includes('Not Found')) {
+              errorMessage = 'Ruta API no encontrada. Verifica el despliegue.'
+            } else if (textResponse.includes('500') || textResponse.includes('Internal Server Error')) {
+              errorMessage = 'Error interno del servidor. Intenta de nuevo.'
+            } else {
+              errorMessage = 'El servidor no está respondiendo correctamente. Contacta al administrador.'
+            }
+          }
+          
+          throw new Error(errorMessage)
+        }
+        
+        // Respuesta exitosa - parsear resultado
+        if (!contentType || !contentType.includes('application/json')) {
+          const textResponse = await response.text()
+          console.error('Respuesta exitosa pero no-JSON:', textResponse.substring(0, 200))
+          throw new Error('Respuesta inválida del servidor')
+        }
+        
+        result = await response.json()
+        
+      } catch (error) {
+        // Re-lanzar errores ya manejados
+        if (error instanceof Error) {
+          throw error
+        }
+        // Error inesperado
+        throw new Error('Error procesando la respuesta del servidor')
       }
-
-      const result = await response.json()
       console.log('Luminaria registrada:', result)
       
       alert('✅ Luminaria registrada exitosamente con 3 imágenes!')
@@ -626,7 +728,7 @@ export default function FormPage() {
               </label>
               
               {/* Aviso importante sobre HTTPS */}
-              {!window.isSecureContext && (
+              {!isSecureContext && (
                 <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded-lg mb-3">
                   <div className="flex">
                     <div className="flex-shrink-0">
@@ -798,11 +900,18 @@ export default function FormPage() {
                 <input
                   type="text"
                   value={poste}
-                  onChange={(e) => setPoste(e.target.value)}
-                  placeholder="Ej: P-12345"
+                  onChange={(e) => {
+                    // Permitir solo números, letras, guiones y espacios
+                    const sanitizedValue = e.target.value.replace(/[^a-zA-Z0-9\s\-]/g, '')
+                    setPoste(sanitizedValue)
+                  }}
+                  placeholder="Ej: 100101 o P-12345"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent transition-all outline-none text-gray-900"
                   required
+                  minLength={1}
+                  maxLength={50}
                 />
+                <p className="text-xs text-gray-500 mt-1">Solo letras, números, guiones y espacios</p>
               </div>
             </div>
 
