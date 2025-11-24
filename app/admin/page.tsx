@@ -44,6 +44,7 @@ export default function AdminPage() {
   const [expandedWatt, setExpandedWatt] = useState<25 | 40 | 80 | null>(null)
   const [selectedLuminaria, setSelectedLuminaria] = useState<Luminaria | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null)
 
   useEffect(() => {
     // Verificar autenticación
@@ -448,18 +449,26 @@ export default function AdminPage() {
             {/* Modal Content */}
             <div className="flex-1 overflow-y-auto p-6">
               {/* Images Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 {/* Imagen 1: Poste completo */}
                 {selectedLuminaria.imagen_url && (
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold text-gray-600 uppercase">Poste Completo</p>
-                    <div className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-48">
+                    <p className="text-sm font-semibold text-gray-700 uppercase">Poste Completo</p>
+                    <div 
+                      className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-64 md:h-72 cursor-pointer hover:border-black transition-all hover:shadow-lg group"
+                      onClick={() => setFullscreenImage(selectedLuminaria.imagen_url)}
+                    >
                       <Image 
                         src={selectedLuminaria.imagen_url} 
                         alt="Poste completo"
                         fill
-                        className="object-cover"
+                        className="object-cover group-hover:scale-105 transition-transform duration-300"
                       />
+                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                        <svg className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                        </svg>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -467,14 +476,22 @@ export default function AdminPage() {
                 {/* Imagen 2: Watts */}
                 {selectedLuminaria.imagen_watts_url && (
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold text-gray-600 uppercase">Watts</p>
-                    <div className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-48">
+                    <p className="text-sm font-semibold text-gray-700 uppercase">Watts</p>
+                    <div 
+                      className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-64 md:h-72 cursor-pointer hover:border-black transition-all hover:shadow-lg group"
+                      onClick={() => setFullscreenImage(selectedLuminaria.imagen_watts_url)}
+                    >
                       <Image 
                         src={selectedLuminaria.imagen_watts_url} 
                         alt="Watts"
                         fill
-                        className="object-cover"
+                        className="object-cover group-hover:scale-105 transition-transform duration-300"
                       />
+                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                        <svg className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                        </svg>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -482,14 +499,22 @@ export default function AdminPage() {
                 {/* Imagen 3: Fotocelda */}
                 {selectedLuminaria.imagen_fotocelda_url && (
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold text-gray-600 uppercase">Fotocelda</p>
-                    <div className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-48">
+                    <p className="text-sm font-semibold text-gray-700 uppercase">Fotocelda</p>
+                    <div 
+                      className="rounded-xl overflow-hidden border-2 border-gray-200 relative h-64 md:h-72 cursor-pointer hover:border-black transition-all hover:shadow-lg group"
+                      onClick={() => setFullscreenImage(selectedLuminaria.imagen_fotocelda_url)}
+                    >
                       <Image 
                         src={selectedLuminaria.imagen_fotocelda_url} 
                         alt="Fotocelda"
                         fill
-                        className="object-cover"
+                        className="object-cover group-hover:scale-105 transition-transform duration-300"
                       />
+                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                        <svg className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                        </svg>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -577,6 +602,38 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* Fullscreen Image Modal */}
+      {fullscreenImage && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-[70] p-4 animate-fadeIn"
+          onClick={() => setFullscreenImage(null)}
+        >
+          <button
+            onClick={() => setFullscreenImage(null)}
+            className="absolute top-4 right-4 p-3 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full transition-all z-10"
+          >
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <div 
+            className="relative w-full h-full max-w-6xl max-h-[90vh] animate-scaleIn"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Image 
+              src={fullscreenImage} 
+              alt="Imagen en pantalla completa"
+              fill
+              className="object-contain"
+              sizes="(max-width: 1536px) 100vw, 1536px"
+            />
+          </div>
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-70 text-white px-4 py-2 rounded-full text-sm">
+            Haz clic fuera de la imagen para cerrar
+          </div>
+        </div>
+      )}
+
       <style jsx global>{`
         @keyframes fadeIn {
           from {
@@ -598,12 +655,27 @@ export default function AdminPage() {
           }
         }
 
+        @keyframes scaleIn {
+          from {
+            opacity: 0;
+            transform: scale(0.9);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
         .animate-fadeIn {
           animation: fadeIn 0.2s ease-out;
         }
 
         .animate-slideUp {
           animation: slideUp 0.3s ease-out;
+        }
+
+        .animate-scaleIn {
+          animation: scaleIn 0.3s ease-out;
         }
       `}</style>
     </main>

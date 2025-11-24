@@ -60,11 +60,13 @@ export async function saveOfflineRecord(data: {
   return id;
 }
 
-// Obtener todos los registros pendientes
+// Obtener todos los registros pendientes (no sincronizados)
 export async function getPendingRecords(): Promise<PendingLuminaria[]> {
   const db = await initDB();
   const allRecords = await db.getAll('pendingLuminarias');
-  return allRecords.filter((record: PendingLuminaria) => !record.synced);
+  const pendingRecords = allRecords.filter((record: PendingLuminaria) => !record.synced);
+  console.log(`📊 Total de registros en DB: ${allRecords.length}, Pendientes: ${pendingRecords.length}`);
+  return pendingRecords;
 }
 
 // Marcar un registro como sincronizado
@@ -76,7 +78,10 @@ export async function markAsSynced(id: number) {
   if (record) {
     record.synced = true;
     await tx.store.put(record);
+    await tx.done;
     console.log('✅ Registro marcado como sincronizado:', id);
+  } else {
+    console.warn('⚠️ No se encontró el registro con ID:', id);
   }
 }
 
@@ -128,4 +133,26 @@ export function fileToBlob(file: File): Promise<Blob> {
 // Convertir Blob a File (útil para enviar datos)
 export function blobToFile(blob: Blob, filename: string): File {
   return new File([blob], filename, { type: blob.type });
+}
+
+// Obtener todos los registros (sincronizados y no sincronizados) - útil para debugging
+export async function getAllRecords(): Promise<PendingLuminaria[]> {
+  const db = await initDB();
+  const allRecords = await db.getAll('pendingLuminarias');
+  console.log(`📊 Total de registros almacenados: ${allRecords.length}`);
+  return allRecords;
+}
+
+// Obtener estadísticas de registros
+export async function getRecordStats() {
+  const db = await initDB();
+  const allRecords = await db.getAll('pendingLuminarias');
+  const pending = allRecords.filter((r: PendingLuminaria) => !r.synced).length;
+  const synced = allRecords.filter((r: PendingLuminaria) => r.synced).length;
+  
+  return {
+    total: allRecords.length,
+    pending,
+    synced
+  };
 }

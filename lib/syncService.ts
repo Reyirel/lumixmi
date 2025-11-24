@@ -93,14 +93,18 @@ export async function syncRecord(record: {
       throw new Error('Error al crear la luminaria');
     }
 
-    // Marcar como sincronizado
+    // Marcar como sincronizado (pero NO eliminar para mantener historial)
     if (record.id) {
       await markAsSynced(record.id);
+      console.log(`✅ Registro ${record.id} marcado como sincronizado exitosamente`);
     }
 
     return true;
   } catch (error) {
-    console.error('Error sincronizando registro:', error);
+    console.error('❌ Error sincronizando registro:', error);
+    if (error instanceof Error) {
+      console.error('Detalles del error:', error.message);
+    }
     throw error;
   }
 }
@@ -121,17 +125,19 @@ export async function syncAllPendingRecords() {
 
   for (const record of pendingRecords) {
     try {
+      console.log(`🔄 Procesando registro ${record.id}: Poste ${record.numero_poste}`);
       await syncRecord(record);
       successCount++;
-      console.log(`✅ Registro ${record.id} sincronizado`);
+      console.log(`✅ Registro ${record.id} (Poste: ${record.numero_poste}) sincronizado exitosamente`);
       
-      // Opcional: eliminar el registro después de sincronizar
-      if (record.id) {
-        await deleteRecord(record.id);
-      }
+      // NO eliminamos el registro, solo lo marcamos como sincronizado
+      // Esto permite mantener un historial y verificar qué se ha sincronizado
     } catch (error) {
       failedCount++;
-      console.error(`❌ Error sincronizando registro ${record.id}:`, error);
+      console.error(`❌ Error sincronizando registro ${record.id} (Poste: ${record.numero_poste}):`, error);
+      if (error instanceof Error) {
+        console.error(`Detalles: ${error.message}`);
+      }
     }
   }
 

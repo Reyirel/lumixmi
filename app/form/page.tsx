@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { useOnlineStatus } from '@/lib/useOnlineStatus'
-import { saveOfflineRecord, fileToBlob, getPendingCount } from '@/lib/offlineStorage'
+import { saveOfflineRecord, fileToBlob, getPendingCount, getRecordStats } from '@/lib/offlineStorage'
 import { useAutoSync, syncAllPendingRecords } from '@/lib/syncService'
 import { NotificationPermission } from '@/lib/NotificationPermission'
 
@@ -508,13 +508,33 @@ export default function FormPage() {
                 <button
                   onClick={async () => {
                     try {
-                      const result = await syncAllPendingRecords()
-                      if (result.success > 0) {
-                        alert(`✅ ${result.success} registro(s) sincronizado(s)`)
+                      console.log('🔄 Iniciando sincronización manual...');
+                      
+                      // Obtener estadísticas antes de sincronizar
+                      const statsBefore = await getRecordStats();
+                      console.log('📊 Estadísticas antes de sincronizar:', statsBefore);
+                      
+                      if (statsBefore.pending === 0) {
+                        alert('✅ No hay registros pendientes para sincronizar');
+                        return;
                       }
-                      await updatePendingCount()
-                    } catch {
-                      alert('❌ Error al sincronizar')
+                      
+                      const result = await syncAllPendingRecords();
+                      
+                      // Obtener estadísticas después de sincronizar
+                      const statsAfter = await getRecordStats();
+                      console.log('📊 Estadísticas después de sincronizar:', statsAfter);
+                      
+                      if (result.success > 0) {
+                        alert(`✅ ${result.success} registro(s) sincronizado(s) exitosamente${result.failed > 0 ? `\n❌ ${result.failed} fallaron` : ''}`);
+                      } else if (result.failed > 0) {
+                        alert(`❌ Error al sincronizar ${result.failed} registro(s). Verifica la consola para más detalles.`);
+                      }
+                      
+                      await updatePendingCount();
+                    } catch (error) {
+                      console.error('❌ Error en sincronización:', error);
+                      alert('❌ Error al sincronizar. Verifica la consola para más detalles.');
                     }
                   }}
                   className="px-3 py-1 bg-blue-500 text-white text-xs font-medium rounded hover:bg-blue-600 transition-colors"
