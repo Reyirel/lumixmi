@@ -191,6 +191,13 @@ export default function AdminPage() {
   const [sortField, setSortField] = useState<'numero_poste' | 'latitud' | 'longitud' | 'created_at'>('numero_poste')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
+  // Estados para edición y eliminación
+  const [isEditing, setIsEditing] = useState(false)
+  const [editFormData, setEditFormData] = useState<Partial<Luminaria>>({})
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+
   // Función para verificar si una URL de imagen es válida
   const isValidImageUrl = (url: string | null | undefined): boolean => {
     if (!url) return false
@@ -312,6 +319,116 @@ export default function AdminPage() {
     setSelectedColonia(null)
     setExpandedWatt(null)
     setSelectedLuminaria(null)
+    setIsEditing(false)
+    setEditFormData({})
+    setShowDeleteConfirm(false)
+  }
+
+  // Función para iniciar la edición
+  const startEditing = () => {
+    if (selectedLuminaria) {
+      setEditFormData({
+        ...selectedLuminaria
+      })
+      setIsEditing(true)
+    }
+  }
+
+  // Función para cancelar la edición
+  const cancelEditing = () => {
+    setIsEditing(false)
+    setEditFormData({})
+  }
+
+  // Función para guardar los cambios
+  const handleSaveEdit = async () => {
+    if (!selectedLuminaria || !editFormData) return
+
+    setIsSaving(true)
+    try {
+      // Preparar solo los campos necesarios para la actualización (sin URLs de imágenes)
+      const dataToSend = {
+        colonia_id: editFormData.colonia_id,
+        numero_poste: editFormData.numero_poste,
+        watts: editFormData.watts,
+        latitud: editFormData.latitud,
+        longitud: editFormData.longitud,
+        imagen_url: selectedLuminaria.imagen_url, // Mantener imagen original
+        imagen_watts_url: selectedLuminaria.imagen_watts_url, // Mantener imagen original
+        imagen_fotocelda_url: selectedLuminaria.imagen_fotocelda_url, // Mantener imagen original
+        fotocelda_nueva: editFormData.fotocelda_nueva
+      }
+
+      const response = await fetch(`/api/luminarias/${selectedLuminaria.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Token': 'authenticated'
+        },
+        body: JSON.stringify(dataToSend)
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Error al actualizar')
+      }
+
+      const result = await response.json()
+      
+      // Actualizar la lista de luminarias localmente
+      setLuminarias(prev => 
+        prev.map(l => l.id === selectedLuminaria.id ? { ...l, ...editFormData } : l)
+      )
+      
+      // Actualizar la luminaria seleccionada
+      setSelectedLuminaria({ ...selectedLuminaria, ...editFormData } as Luminaria)
+      
+      setIsEditing(false)
+      setEditFormData({})
+      
+      showNotification('success', 'Luminaria actualizada', 
+        `El poste ${editFormData.numero_poste} ha sido actualizado correctamente`, 3000)
+    } catch (error) {
+      showNotification('error', 'Error al actualizar', 
+        error instanceof Error ? error.message : 'Error desconocido')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Función para eliminar luminaria
+  const handleDelete = async () => {
+    if (!selectedLuminaria) return
+
+    setIsDeleting(true)
+    try {
+      const response = await fetch(`/api/luminarias/${selectedLuminaria.id}`, {
+        method: 'DELETE',
+        headers: {
+          'X-Admin-Token': 'authenticated'
+        }
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Error al eliminar')
+      }
+
+      // Eliminar de la lista local
+      setLuminarias(prev => prev.filter(l => l.id !== selectedLuminaria.id))
+      
+      showNotification('success', 'Luminaria eliminada', 
+        `El poste ${selectedLuminaria.numero_poste} ha sido eliminado correctamente`, 3000)
+      
+      // Cerrar modales
+      setSelectedLuminaria(null)
+      setShowDeleteConfirm(false)
+    } catch (error) {
+      showNotification('error', 'Error al eliminar', 
+        error instanceof Error ? error.message : 'Error desconocido')
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   const filteredColonias = colonias.filter(c => 
@@ -784,7 +901,7 @@ export default function AdminPage() {
       {selectedLuminaria && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4 animate-fadeIn"
-          onClick={() => setSelectedLuminaria(null)}
+          onClick={() => { setSelectedLuminaria(null); setIsEditing(false); setShowDeleteConfirm(false); }}
         >
           <div 
             className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-slideUp"
@@ -792,20 +909,226 @@ export default function AdminPage() {
           >
             {/* Modal Header */}
             <div className="px-6 py-5 bg-black text-white flex items-center justify-between">
-              <h2 className="text-xl font-bold">Detalles de Lámpara</h2>
-              <button
-                onClick={() => setSelectedLuminaria(null)}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <h2 className="text-xl font-bold">
+                {isEditing ? 'Editar Lámpara' : 'Detalles de Lámpara'}
+              </h2>
+              <div className="flex items-center gap-2">
+                {!isEditing && !showDeleteConfirm && (
+                  <>
+                    <button
+                      onClick={startEditing}
+                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                      title="Editar"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="p-2 hover:bg-red-500/50 rounded-lg transition-colors"
+                      title="Eliminar"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => { setSelectedLuminaria(null); setIsEditing(false); setShowDeleteConfirm(false); }}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Modal Content */}
             <div className="flex-1 overflow-y-auto p-6">
-              {/* Images Grid */}
+              {/* Confirmación de eliminación */}
+              {showDeleteConfirm && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-6 mb-6">
+                  <div className="flex items-start space-x-4">
+                    <div className="flex-shrink-0">
+                      <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-red-800 mb-2">¿Eliminar esta luminaria?</h3>
+                      <p className="text-red-700 mb-4">
+                        Esta acción no se puede deshacer. Se eliminará permanentemente el poste <strong>{selectedLuminaria.numero_poste}</strong> y todos sus datos asociados.
+                      </p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={handleDelete}
+                          disabled={isDeleting}
+                          className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          {isDeleting ? (
+                            <>
+                              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Eliminando...
+                            </>
+                          ) : (
+                            'Sí, eliminar'
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setShowDeleteConfirm(false)}
+                          disabled={isDeleting}
+                          className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300 transition-colors disabled:opacity-50"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Formulario de edición */}
+              {isEditing && !showDeleteConfirm && (
+                <div className="space-y-4 mb-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Número de Poste */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Número de Poste *</label>
+                      <input
+                        type="text"
+                        value={editFormData.numero_poste || ''}
+                        onChange={(e) => setEditFormData({ ...editFormData, numero_poste: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent text-gray-900"
+                        required
+                      />
+                    </div>
+
+                    {/* Watts */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Potencia (Watts) *</label>
+                      <select
+                        value={editFormData.watts || 25}
+                        onChange={(e) => setEditFormData({ ...editFormData, watts: parseInt(e.target.value) as 25 | 40 | 80 })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent text-gray-900"
+                      >
+                        <option value={25}>25W</option>
+                        <option value={40}>40W</option>
+                        <option value={80}>80W</option>
+                      </select>
+                    </div>
+
+                    {/* Latitud */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Latitud *</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={editFormData.latitud || ''}
+                        onChange={(e) => setEditFormData({ ...editFormData, latitud: parseFloat(e.target.value) })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent text-gray-900"
+                        required
+                      />
+                    </div>
+
+                    {/* Longitud */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Longitud *</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={editFormData.longitud || ''}
+                        onChange={(e) => setEditFormData({ ...editFormData, longitud: parseFloat(e.target.value) })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent text-gray-900"
+                        required
+                      />
+                    </div>
+
+                    {/* Colonia */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Comunidad</label>
+                      <select
+                        value={editFormData.colonia_id || ''}
+                        onChange={(e) => setEditFormData({ ...editFormData, colonia_id: e.target.value ? parseInt(e.target.value) : null })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent text-gray-900"
+                      >
+                        <option value="">Sin comunidad</option>
+                        {colonias.map(colonia => (
+                          <option key={colonia.id} value={colonia.id}>{colonia.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Fotocelda Nueva */}
+                    <div className="flex items-center">
+                      <label className="flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editFormData.fotocelda_nueva || false}
+                          onChange={(e) => setEditFormData({ ...editFormData, fotocelda_nueva: e.target.checked })}
+                          className="w-5 h-5 text-black border-gray-300 rounded focus:ring-black"
+                        />
+                        <span className="ml-2 text-sm font-medium text-gray-700">Fotocelda Nueva (Capucha Azul)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Nota informativa sobre imágenes */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
+                    <div className="flex items-start space-x-2">
+                      <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p className="text-sm text-blue-700">
+                        Las imágenes no pueden ser editadas. Para cambiar las imágenes, elimine este registro y cree uno nuevo.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Botones de acción */}
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={handleSaveEdit}
+                      disabled={isSaving || !editFormData.numero_poste || !editFormData.watts || editFormData.latitud === undefined || editFormData.longitud === undefined}
+                      className="flex-1 px-4 py-2 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {isSaving ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Guardando...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Guardar Cambios
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={cancelEditing}
+                      disabled={isSaving}
+                      className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300 transition-colors disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Vista normal de detalles */}
+              {!isEditing && !showDeleteConfirm && (
+                <>
+                  {/* Images Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 {/* Imagen 1: Poste completo */}
                 <div className="space-y-2">
@@ -960,6 +1283,8 @@ export default function AdminPage() {
                 </svg>
                 Ver en Google Maps
               </a>
+                </>
+              )}
             </div>
           </div>
         </div>
