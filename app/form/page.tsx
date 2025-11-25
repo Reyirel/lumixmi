@@ -30,6 +30,7 @@ export default function FormPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
   const [isSecureContext, setIsSecureContext] = useState(true)
+  const [isSyncing, setIsSyncing] = useState(false)
   
   // Hooks personalizados para offline
   const isOnline = useOnlineStatus()
@@ -75,6 +76,22 @@ export default function FormPage() {
         updatePendingCount()
       })
     }
+  }, [isOnline, syncPending])
+
+  // Sincronización periódica cada 60 segundos si hay registros pendientes
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+      if (isOnline) {
+        const count = await getPendingCount()
+        if (count > 0) {
+          console.log(`⏰ Sincronización periódica: ${count} registros pendientes`)
+          await syncPending()
+          await updatePendingCount()
+        }
+      }
+    }, 60000) // Cada 60 segundos
+
+    return () => clearInterval(intervalId)
   }, [isOnline, syncPending])
 
   useEffect(() => {
@@ -514,40 +531,39 @@ export default function FormPage() {
               </span>
               {isOnline && (
                 <button
+                  disabled={isSyncing}
                   onClick={async () => {
+                    if (isSyncing) return;
+                    setIsSyncing(true);
                     try {
                       console.log('🔄 Iniciando sincronización manual...');
                       
-                      // Obtener estadísticas antes de sincronizar
-                      const statsBefore = await getRecordStats();
-                      console.log('📊 Estadísticas antes de sincronizar:', statsBefore);
-                      
-                      if (statsBefore.pending === 0) {
-                        alert('✅ No hay registros pendientes para sincronizar');
-                        return;
-                      }
-                      
                       const result = await syncAllPendingRecords();
                       
-                      // Obtener estadísticas después de sincronizar
-                      const statsAfter = await getRecordStats();
-                      console.log('📊 Estadísticas después de sincronizar:', statsAfter);
-                      
                       if (result.success > 0) {
-                        alert(`✅ ${result.success} registro(s) sincronizado(s) exitosamente${result.failed > 0 ? `\n❌ ${result.failed} fallaron` : ''}`);
+                        alert(`✅ ${result.success} registro(s) sincronizado(s) exitosamente${result.failed > 0 ? `\n⚠️ ${result.failed} pendiente(s)` : ''}`);
                       } else if (result.failed > 0) {
-                        alert(`❌ Error al sincronizar ${result.failed} registro(s). Verifica la consola para más detalles.`);
+                        alert(`⏳ ${result.failed} registro(s) pendiente(s). Se reintentará automáticamente.`);
                       }
                       
                       await updatePendingCount();
                     } catch (error) {
                       console.error('❌ Error en sincronización:', error);
-                      alert('❌ Error al sincronizar. Verifica la consola para más detalles.');
+                    } finally {
+                      setIsSyncing(false);
                     }
                   }}
-                  className="px-3 py-1 bg-blue-500 text-white text-xs font-medium rounded hover:bg-blue-600 transition-colors"
+                  className={`px-3 py-1 text-white text-xs font-medium rounded transition-colors flex items-center gap-1 ${
+                    isSyncing ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
+                  }`}
                 >
-                  Sincronizar ahora
+                  {isSyncing && (
+                    <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                    </svg>
+                  )}
+                  {isSyncing ? 'Sincronizando...' : 'Sincronizar'}
                 </button>
               )}
             </div>

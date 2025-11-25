@@ -212,3 +212,164 @@ export async function getRecordStats() {
     synced
   };
 }
+
+// Diagnóstico de registros pendientes - detecta problemas con datos antiguos
+export async function diagnoseRecords(): Promise<{
+  total: number;
+  pending: number;
+  healthy: number;
+  corrupted: number;
+  details: Array<{
+    id: number;
+    poste: string;
+    timestamp: number;
+    dateFormatted: string;
+    hasImages: boolean;
+    hasCoords: boolean;
+    hasColonia: boolean;
+    issues: string[];
+  }>;
+}> {
+  const db = await initDB();
+  const allRecords = await db.getAll('pendingLuminarias');
+  const pendingRecords = allRecords.filter((r: PendingLuminaria) => !r.synced);
+  
+  let healthy = 0;
+  let corrupted = 0;
+  const details: Array<{
+    id: number;
+    poste: string;
+    timestamp: number;
+    dateFormatted: string;
+    hasImages: boolean;
+    hasCoords: boolean;
+    hasColonia: boolean;
+    issues: string[];
+  }> = [];
+  
+  for (const record of pendingRecords) {
+    const issues: string[] = [];
+    
+    // Verificar imágenes
+    const hasImagen = record.imagen instanceof Blob && record.imagen.size > 0;
+    const hasImagenWatts = record.imagen_watts instanceof Blob && record.imagen_watts.size > 0;
+    const hasImagenFotocelda = record.imagen_fotocelda instanceof Blob && record.imagen_fotocelda.size > 0;
+    const hasImages = hasImagen && hasImagenWatts && hasImagenFotocelda;
+    
+    if (!hasImagen) issues.push('Falta imagen de luminaria');
+    if (!hasImagenWatts) issues.push('Falta imagen de watts');
+    if (!hasImagenFotocelda) issues.push('Falta imagen de fotocelda');
+    
+    // Verificar coordenadas
+    const hasCoords = typeof record.latitud === 'number' && typeof record.longitud === 'number' &&
+                      !isNaN(record.latitud) && !isNaN(record.longitud) &&
+                      record.latitud !== 0 && record.longitud !== 0;
+    if (!hasCoords) issues.push('Coordenadas inválidas o faltantes');
+    
+    // Verificar colonia
+    const hasColonia = typeof record.colonia_id === 'number' && record.colonia_id > 0;
+    if (!hasColonia) issues.push('Colonia no especificada');
+    
+    // Verificar número de poste
+    if (!record.numero_poste || record.numero_poste.trim() === '') {
+      issues.push('Número de poste vacío');
+    }
+    
+    // Verificar watts
+    if (typeof record.watts !== 'number' || record.watts <= 0) {
+      issues.push('Watts inválidos');
+    }
+    
+    if (issues.length === 0) {
+      healthy++;
+    } else {
+      corrupted++;
+    }
+    
+    details.push({
+      id: record.id || 0,
+      poste: record.numero_poste || 'Sin número',
+      timestamp: record.timestamp || 0,
+      dateFormatted: record.timestamp 
+        ? new Date(record.timestamp).toLocaleString('es-MX') 
+        : 'Fecha desconocida',
+      hasImages,
+      hasCoords,
+      hasColonia,
+      issues,
+    });
+  }
+  
+  return {
+    total: allRecords.length,
+    pending: pendingRecords.length,
+    healthy,
+    corrupted,
+    details,
+  };
+}
+
+// Obtener un registro específico por ID
+export async function getRecordById(id: number): Promise<PendingLuminaria | undefined> {
+  const db = await initDB();
+  return await db.get('pendingLuminarias', id);
+}
+
+// Resetear el estado de sincronización de un registro (para reintentar)
+export async function resetSyncStatus(id: number): Promise<boolean> {
+  const db = await initDB();
+  const tx = db.transaction('pendingLuminarias', 'readwrite');
+  const record = await tx.store.get(id);
+  
+  if (record) {
+    record.synced = false;
+    await tx.store.put(record);
+    await tx.done;
+    console.log('🔄 Estado de sincronización reseteado para registro:', id);
+    return true;
+  }
+  return false;
+}
+
+// Resetear TODOS los registros marcados como sincronizados (útil si hubo errores)
+export async function resetAllSyncedRecords(): Promise<number> {
+  const db = await initDB();
+  const allRecords = await db.getAll('pendingLuminarias');
+  const syncedRecords = allRecords.filter((r: PendingLuminaria) => r.synced);
+  
+  let count = 0;
+  for (const record of syncedRecords) {
+    if (record.id) {
+      record.synced = false;
+      await db.put('pendingLuminarias', record);
+      count++;
+    }
+  }
+  
+  console.log(`🔄 ${count} registros reseteados para re-sincronización`);
+  return count;
+}
+
+// Exportar registros pendientes como JSON (para backup/debugging)
+export async function exportPendingRecordsAsJSON(): Promise<string> {
+  const pendingRecords = await getPendingRecords();
+  
+  const exportData = pendingRecords.map(record => ({
+    id: record.id,
+    colonia_id: record.colonia_id,
+    numero_poste: record.numero_poste,
+    watts: record.watts,
+    latitud: record.latitud,
+    longitud: record.longitud,
+    fotocelda_nueva: record.fotocelda_nueva,
+    timestamp: record.timestamp,
+    dateFormatted: new Date(record.timestamp).toLocaleString('es-MX'),
+    synced: record.synced,
+    // Las imágenes se indican como presentes pero no se exportan en JSON
+    imagen_size: record.imagen?.size || 0,
+    imagen_watts_size: record.imagen_watts?.size || 0,
+    imagen_fotocelda_size: record.imagen_fotocelda?.size || 0,
+  }));
+  
+  return JSON.stringify(exportData, null, 2);
+}
