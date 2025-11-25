@@ -186,6 +186,10 @@ export default function AdminPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null)
   const [imageErrors, setImageErrors] = useState<{[key: string]: boolean}>({})
+  
+  // Estados para ordenamiento de luminarias
+  const [sortField, setSortField] = useState<'numero_poste' | 'latitud' | 'longitud' | 'created_at'>('numero_poste')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   // Función para verificar si una URL de imagen es válida
   const isValidImageUrl = (url: string | null | undefined): boolean => {
@@ -271,6 +275,37 @@ export default function AdminPage() {
     })
 
     return groups
+  }
+
+  // Función para ordenar luminarias
+  const sortLuminarias = (luminariasToSort: Luminaria[]): Luminaria[] => {
+    return [...luminariasToSort].sort((a, b) => {
+      let comparison = 0
+      
+      switch (sortField) {
+        case 'numero_poste':
+          // Intentar ordenar numéricamente si es posible
+          const numA = parseInt(a.numero_poste)
+          const numB = parseInt(b.numero_poste)
+          if (!isNaN(numA) && !isNaN(numB)) {
+            comparison = numA - numB
+          } else {
+            comparison = a.numero_poste.localeCompare(b.numero_poste, 'es', { numeric: true })
+          }
+          break
+        case 'latitud':
+          comparison = a.latitud - b.latitud
+          break
+        case 'longitud':
+          comparison = a.longitud - b.longitud
+          break
+        case 'created_at':
+          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          break
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison
+    })
   }
 
   const closeModal = () => {
@@ -661,12 +696,52 @@ export default function AdminPage() {
                   {/* Expanded Watt List */}
                   {expandedWatt && (
                     <div className="animate-fadeIn">
-                      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
-                        <span className="inline-block w-2 h-2 bg-black rounded-full mr-2"></span>
-                        Lámparas de {expandedWatt}W
-                      </h3>
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
+                        <h3 className="text-lg font-bold text-gray-900 flex items-center">
+                          <span className="inline-block w-2 h-2 bg-black rounded-full mr-2"></span>
+                          Lámparas de {expandedWatt}W
+                        </h3>
+                        
+                        {/* Controles de ordenamiento */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm text-gray-600">Ordenar por:</span>
+                          <select
+                            value={sortField}
+                            onChange={(e) => setSortField(e.target.value as 'numero_poste' | 'latitud' | 'longitud' | 'created_at')}
+                            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                          >
+                            <option value="numero_poste">Número de Poste</option>
+                            <option value="latitud">Latitud</option>
+                            <option value="longitud">Longitud</option>
+                            <option value="created_at">Fecha de Registro</option>
+                          </select>
+                          
+                          <button
+                            onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                            className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                            title={sortDirection === 'asc' ? 'Menor a Mayor' : 'Mayor a Menor'}
+                          >
+                            {sortDirection === 'asc' ? (
+                              <>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                                </svg>
+                                <span className="hidden sm:inline">Ascendente</span>
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
+                                </svg>
+                                <span className="hidden sm:inline">Descendente</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                      
                       <div className="space-y-3">
-                        {wattGroups.find(g => g.watts === expandedWatt)?.luminarias.map(lum => (
+                        {sortLuminarias(wattGroups.find(g => g.watts === expandedWatt)?.luminarias || []).map(lum => (
                           <div
                             key={lum.id}
                             onClick={() => setSelectedLuminaria(lum)}
