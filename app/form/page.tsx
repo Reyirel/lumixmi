@@ -40,7 +40,7 @@ export default function FormPage() {
     fetch('/api/colonias')
       .then(async (r) => {
         if (!r.ok) {
-          throw new Error('Error cargando colonias')
+          throw new Error('Error cargando colonias desde el servidor')
         }
         const contentType = r.headers.get('content-type')
         if (!contentType || !contentType.includes('application/json')) {
