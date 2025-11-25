@@ -2,6 +2,46 @@ import { NextResponse } from 'next/server'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import type { LuminariaInsert } from '@/lib/supabase'
 
+// Función para obtener todos los registros con paginación automática
+async function getAllLuminarias() {
+  const allData = []
+  let from = 0
+  const batchSize = 1000
+  let hasMore = true
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('luminarias')
+      .select(`
+        *,
+        colonias (
+          id,
+          nombre
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .range(from, from + batchSize - 1)
+
+    if (error) {
+      throw error
+    }
+
+    if (data && data.length > 0) {
+      allData.push(...data)
+      from += batchSize
+      
+      // Si recibimos menos registros que el tamaño del lote, hemos llegado al final
+      if (data.length < batchSize) {
+        hasMore = false
+      }
+    } else {
+      hasMore = false
+    }
+  }
+
+  return allData
+}
+
 // GET: Obtener todas las luminarias
 export async function GET() {
   try {
@@ -14,24 +54,7 @@ export async function GET() {
       )
     }
 
-    const { data, error } = await supabase
-      .from('luminarias')
-      .select(`
-        *,
-        colonias (
-          id,
-          nombre
-        )
-      `)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error('Error obteniendo luminarias:', error)
-      return NextResponse.json(
-        { error: 'Error al obtener luminarias' },
-        { status: 500 }
-      )
-    }
+    const data = await getAllLuminarias()
 
     return NextResponse.json(data)
   } catch (error) {

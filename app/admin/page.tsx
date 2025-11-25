@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { useNotifications } from '@/lib/NotificationSystem'
 
 type Colonia = {
   id: number
@@ -175,6 +176,7 @@ const getMetaForColonia = (nombreColonia: string): number | null => {
 
 export default function AdminPage() {
   const router = useRouter()
+  const { showNotification } = useNotifications()
   const [colonias, setColonias] = useState<Colonia[]>([])
   const [luminarias, setLuminarias] = useState<Luminaria[]>([])
   const [loading, setLoading] = useState(true)
@@ -196,7 +198,6 @@ export default function AdminPage() {
 
   // Función para manejar errores de carga de imagen
   const handleImageError = (imageKey: string) => {
-    console.log(`❌ Error cargando imagen: ${imageKey}`)
     setImageErrors(prev => ({ ...prev, [imageKey]: true }))
   }
 
@@ -204,12 +205,6 @@ export default function AdminPage() {
   useEffect(() => {
     if (selectedLuminaria) {
       setImageErrors({})
-      // Debug: mostrar URLs de imágenes
-      console.log('🖼️ URLs de imágenes:', {
-        poste: selectedLuminaria.imagen_url,
-        watts: selectedLuminaria.imagen_watts_url,
-        fotocelda: selectedLuminaria.imagen_fotocelda_url
-      })
     }
   }, [selectedLuminaria])
 
@@ -239,8 +234,12 @@ export default function AdminPage() {
 
       setColonias(coloniasData)
       setLuminarias(luminariasData)
+      
+      showNotification('success', 'Datos cargados exitosamente', 
+        `${coloniasData.length} colonias y ${luminariasData.length} luminarias`, 3000)
     } catch (error) {
-      console.error('Error cargando datos:', error)
+      showNotification('error', 'Error cargando datos', 
+        error instanceof Error ? error.message : 'Error desconocido')
     } finally {
       setLoading(false)
     }
@@ -291,6 +290,8 @@ export default function AdminPage() {
     watts40: luminarias.filter(l => l.watts === 40).length,
     watts80: luminarias.filter(l => l.watts === 80).length,
   }
+
+
 
   if (loading) {
     return (
