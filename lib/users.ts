@@ -23,8 +23,8 @@ export const USERS: User[] = [
   },
   // ZONA NORTE
   {
-    email: 'edagrlugo@lumixmi.com',
-    password: 'edagrlugo123',
+    email: 'edgarlugo@lumixmi.com',
+    password: 'edgarlugo123',
     name: 'Zona Norte',
     role: 'encargado',
     comunidades: [

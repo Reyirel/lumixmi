@@ -163,7 +163,7 @@ export default function LoginPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <div className="bg-white p-2 rounded border">
                       <p className="font-semibold text-gray-700">Edgar lugo</p>
-                      <p className="text-[10px]">edagrlugo@lumixmi.com / edagrlugo123</p>
+                      <p className="text-[10px]">edgarlugo@lumixmi.com / edgarlugo123</p>
                     </div>
                     <div className="bg-white p-2 rounded border">
                       <p className="font-semibold text-gray-700">Marco</p>
