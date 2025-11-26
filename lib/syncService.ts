@@ -3,7 +3,6 @@
 import {
   getPendingRecords,
   markAsSynced,
-  deleteRecord,
   blobToFile,
   getPendingCount,
   isRecordSynced,
@@ -11,7 +10,6 @@ import {
   getRecordById,
   resetSyncStatus,
   initDB,
-  type PendingLuminaria,
 } from './offlineStorage';
 
 // Variable para evitar sincronizaciones concurrentes
@@ -402,7 +400,7 @@ export async function forceSyncWithRetry(
 // Forzar sincronización de TODOS los registros pendientes (incluso los marcados como sincronizados)
 export async function forceSyncAllRecords(
   progressCallback?: (current: number, total: number) => void
-): Promise<{ synced: number; failed: number; errors: any[] }> {
+): Promise<{ synced: number; failed: number; errors: Array<{ id: number; poste: string; error: string }> }> {
   console.log('🚀 Iniciando sincronización forzada de TODOS los registros...');
   
   if (isSyncing) {
@@ -424,7 +422,7 @@ export async function forceSyncAllRecords(
     
     let syncedCount = 0;
     let failedCount = 0;
-    const errors: any[] = [];
+    const errors: Array<{ id: number; poste: string; error: string }> = [];
     
     // Procesar cada registro
     for (let i = 0; i < allRecords.length; i++) {
@@ -462,7 +460,7 @@ export async function forceSyncAllRecords(
         const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
         
         errors.push({
-          id: record.id,
+          id: record.id || 0,
           poste: record.numero_poste,
           error: errorMessage,
         });

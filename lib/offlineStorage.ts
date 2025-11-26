@@ -384,7 +384,12 @@ export async function clearAllData(): Promise<void> {
 }
 
 // Exportar datos pendientes para backup
-export async function exportPendingData(): Promise<any> {
+export async function exportPendingData(): Promise<{
+  version: string;
+  timestamp: number;
+  count: number;
+  records: unknown[];
+}> {
   const db = await initDB();
   const allRecords = await db.getAll('pendingLuminarias');
   
@@ -425,7 +430,12 @@ export async function exportPendingData(): Promise<any> {
 }
 
 // Importar datos desde backup
-export async function importPendingData(data: any): Promise<void> {
+export async function importPendingData(data: {
+  version?: string;
+  timestamp?: number;
+  count?: number;
+  records: unknown[];
+}): Promise<void> {
   if (!data || !data.records || !Array.isArray(data.records)) {
     throw new Error('Formato de datos inválido');
   }
@@ -436,19 +446,21 @@ export async function importPendingData(data: any): Promise<void> {
   
   for (const record of data.records) {
     try {
+      const recordData = record as Record<string, unknown>;
+      
       // Convertir base64 de vuelta a blobs
       const importRecord: PendingLuminaria = {
-        colonia_id: record.colonia_id,
-        numero_poste: record.numero_poste,
-        watts: record.watts,
-        latitud: record.latitud,
-        longitud: record.longitud,
-        fotocelda_nueva: record.fotocelda_nueva,
-        timestamp: record.timestamp || Date.now(),
+        colonia_id: recordData.colonia_id as number,
+        numero_poste: recordData.numero_poste as string,
+        watts: recordData.watts as number,
+        latitud: recordData.latitud as number,
+        longitud: recordData.longitud as number,
+        fotocelda_nueva: recordData.fotocelda_nueva as boolean,
+        timestamp: (recordData.timestamp as number) || Date.now(),
         synced: false, // Forzar como no sincronizado al importar
-        imagen: record.imagen_base64 ? base64ToBlob(record.imagen_base64) : new Blob(),
-        imagen_watts: record.imagen_watts_base64 ? base64ToBlob(record.imagen_watts_base64) : new Blob(),
-        imagen_fotocelda: record.imagen_fotocelda_base64 ? base64ToBlob(record.imagen_fotocelda_base64) : new Blob(),
+        imagen: recordData.imagen_base64 ? base64ToBlob(recordData.imagen_base64 as string) : new Blob(),
+        imagen_watts: recordData.imagen_watts_base64 ? base64ToBlob(recordData.imagen_watts_base64 as string) : new Blob(),
+        imagen_fotocelda: recordData.imagen_fotocelda_base64 ? base64ToBlob(recordData.imagen_fotocelda_base64 as string) : new Blob(),
       };
       
       // Verificar si ya existe un registro similar
@@ -523,7 +535,7 @@ export async function cleanDuplicateRecords(): Promise<{ removed: number; kept: 
       records.sort((a, b) => b.timestamp - a.timestamp);
       
       // Encontrar el mejor registro para mantener (preferir no sincronizados)
-      let recordToKeep = records.find(r => !r.synced) || records[0];
+      const recordToKeep = records.find(r => !r.synced) || records[0];
       
       // Eliminar todos los demás
       for (const record of records) {

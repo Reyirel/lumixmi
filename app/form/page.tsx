@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { useOnlineStatus } from '@/lib/useOnlineStatus'
-import { saveOfflineRecord, fileToBlob, getPendingCount, getRecordStats } from '@/lib/offlineStorage'
-import { useAutoSync, syncAllPendingRecords } from '@/lib/syncService'
+import { saveOfflineRecord, fileToBlob, getPendingCount } from '@/lib/offlineStorage'
+import { useAutoSync } from '@/lib/syncService'
 import { NotificationPermission } from '@/lib/NotificationPermission'
 import { DataSyncStatus } from '@/lib/DataSyncStatus'
 
@@ -29,9 +29,7 @@ export default function FormPage() {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [isLoadingLocation, setIsLoadingLocation] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [pendingCount, setPendingCount] = useState(0)
   const [isSecureContext, setIsSecureContext] = useState(true)
-  const [isSyncing, setIsSyncing] = useState(false)
   
   // Hooks personalizados para offline
   const isOnline = useOnlineStatus()
@@ -60,26 +58,16 @@ export default function FormPage() {
       setIsSecureContext(window.isSecureContext)
     }
     
-    // Cargar contador de registros pendientes
-    updatePendingCount()
   }, [])
-
-  // Actualizar contador de registros pendientes
-  const updatePendingCount = async () => {
-    const count = await getPendingCount()
-    setPendingCount(count)
-  }
 
   // Auto-sincronizar cuando se detecta conexión
   useEffect(() => {
     if (isOnline) {
-      syncPending().then(() => {
-        updatePendingCount()
-      })
+      syncPending()
     }
   }, [isOnline, syncPending])
 
-  // Sincronización periódica cada 60 segundos si hay registros pendientes
+  // Sincronización periódica cada 60 segundos si hay conexión
   useEffect(() => {
     const intervalId = setInterval(async () => {
       if (isOnline) {
@@ -87,7 +75,6 @@ export default function FormPage() {
         if (count > 0) {
           console.log(`⏰ Sincronización periódica: ${count} registros pendientes`)
           await syncPending()
-          await updatePendingCount()
         }
       }
     }, 60000) // Cada 60 segundos
@@ -261,8 +248,7 @@ export default function FormPage() {
           alert('💾 Registro guardado offline. Se enviará automáticamente cuando tengas conexión.')
         }
         
-        // Actualizar contador
-        await updatePendingCount()
+        // Los datos se actualizarán automáticamente
         
         // Limpiar formulario
         resetForm()
@@ -466,7 +452,7 @@ export default function FormPage() {
             } else {
               alert('💾 Registro guardado offline.')
             }
-            await updatePendingCount()
+            // Los datos se actualizarán automáticamente
             resetForm()
           } catch (offlineError) {
             console.error('Error guardando offline:', offlineError)

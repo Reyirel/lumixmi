@@ -7,7 +7,15 @@ import { useOnlineStatus } from './useOnlineStatus';
 
 export function DataSyncStatus() {
   const [pendingCount, setPendingCount] = useState(0);
-  const [storageStats, setStorageStats] = useState<any>(null);
+  const [storageStats, setStorageStats] = useState<{
+    totalRecords: number;
+    totalSize: number;
+    pendingRecords: number;
+    syncedRecords: number;
+    corruptedRecords: number;
+    duplicateGroups: number;
+    estimatedQuotaUsage?: number;
+  } | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const isOnline = useOnlineStatus();
 
