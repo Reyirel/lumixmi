@@ -529,7 +529,7 @@ export async function cleanDuplicateRecords(): Promise<{ removed: number; kept: 
   let keptCount = 0;
   
   // Para cada grupo de duplicados, mantener solo el más reciente y no sincronizado
-  for (const [hash, records] of hashMap) {
+  for (const [, records] of hashMap) {
     if (records.length > 1) {
       // Ordenar por timestamp descendente (más reciente primero)
       records.sort((a, b) => b.timestamp - a.timestamp);
