@@ -15,6 +15,32 @@ import {
 // Variable para evitar sincronizaciones concurrentes
 let isSyncing = false;
 
+// Resetear el estado al cargar el módulo por seguridad
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    isSyncing = false;
+  });
+  
+  // Resetear después de 30 segundos de estar bloqueado (safety net)
+  setInterval(() => {
+    if (isSyncing) {
+      console.warn('⚠️ Estado de sincronización bloqueado por más de 30s, reseteando automáticamente');
+      isSyncing = false;
+    }
+  }, 30000);
+}
+
+// Función para resetear el estado de sincronización (útil en caso de errores)
+export function resetSyncState(): void {
+  isSyncing = false;
+  console.log('🔄 Estado de sincronización reseteado');
+}
+
+// Función para verificar el estado de sincronización
+export function getSyncState(): boolean {
+  return isSyncing;
+}
+
 // Número máximo de reintentos para cada registro
 const MAX_RETRIES = 3;
 
@@ -404,7 +430,8 @@ export async function forceSyncAllRecords(
   console.log('🚀 Iniciando sincronización forzada de TODOS los registros...');
   
   if (isSyncing) {
-    throw new Error('Ya hay una sincronización en progreso');
+    console.warn('⚠️ Sincronización ya en progreso, reseteando estado...');
+    isSyncing = false; // Resetear el estado si está bloqueado
   }
   
   isSyncing = true;
@@ -524,5 +551,165 @@ export async function syncSingleRecord(recordId: number): Promise<{
       success: false,
       error: error instanceof Error ? error.message : 'Error desconocido',
     };
+  }
+}
+
+// Función para sincronizar solo datos básicos (sin imágenes) como último recurso
+async function syncBasicDataOnly(record: {
+  id?: number;
+  colonia_id: number;
+  numero_poste: string;
+  watts: number;
+  latitud: number;
+  longitud: number;
+  fotocelda_nueva: boolean;
+  timestamp: number;
+}): Promise<boolean> {
+  try {
+    console.log(`🔄 Sincronizando datos básicos para poste ${record.numero_poste} (sin imágenes)`);
+    
+    const response = await fetch('/api/luminarias', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        colonia_id: record.colonia_id,
+        numero_poste: record.numero_poste,
+        watts: record.watts,
+        latitud: record.latitud,
+        longitud: record.longitud,
+        fotocelda_nueva: record.fotocelda_nueva,
+        observaciones: 'Registro subido sin imágenes - imágenes corruptas o faltantes',
+        fecha_instalacion: new Date(record.timestamp).toISOString().split('T')[0],
+        // No incluimos imágenes
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Error ${response.status}: ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log(`✅ Datos básicos sincronizados para poste ${record.numero_poste}:`, result);
+    return true;
+    
+  } catch (error) {
+    console.error(`❌ Error sincronizando datos básicos para poste ${record.numero_poste}:`, error);
+    throw error;
+  }
+}
+
+// Función de auto-recovery que se ejecuta automáticamente
+export async function autoRecoverySync(): Promise<{
+  recovered: boolean;
+  synced: number;
+  basicDataOnly: number;
+  failed: number;
+}> {
+  console.log('🔧 Iniciando auto-recovery del sistema de sincronización...');
+  
+  // 1. Resetear cualquier estado bloqueado
+  if (isSyncing) {
+    console.log('🔄 Reseteando estado de sincronización bloqueado...');
+    isSyncing = false;
+  }
+  
+  let totalSynced = 0;
+  let totalBasicOnly = 0;
+  let totalFailed = 0;
+  
+  try {
+    // 2. Obtener registros pendientes
+    const pendingRecords = await getPendingRecords();
+    const unsyncedRecords = pendingRecords.filter(r => !r.synced);
+    
+    if (unsyncedRecords.length === 0) {
+      console.log('✅ No hay registros pendientes para recuperar');
+      return { recovered: true, synced: 0, basicDataOnly: 0, failed: 0 };
+    }
+    
+    console.log(`🔍 Encontrados ${unsyncedRecords.length} registros para auto-recovery`);
+    
+    // 3. Procesar cada registro con estrategia inteligente
+    for (const record of unsyncedRecords) {
+      try {
+        // Estrategia 1: Intentar sincronización completa (con imágenes)
+        const hasValidImages = 
+          record.imagen instanceof Blob && record.imagen.size > 0 &&
+          record.imagen_watts instanceof Blob && record.imagen_watts.size > 0 &&
+          record.imagen_fotocelda instanceof Blob && record.imagen_fotocelda.size > 0;
+        
+        if (hasValidImages) {
+          try {
+            await syncRecord(record);
+            totalSynced++;
+            console.log(`✅ Recovery completo para poste ${record.numero_poste}`);
+            continue;
+          } catch (error) {
+            console.warn(`⚠️ Falló sync completo para poste ${record.numero_poste}, intentando datos básicos...`);
+          }
+        }
+        
+        // Estrategia 2: Sincronizar solo datos básicos (sin imágenes)
+        try {
+          await syncBasicDataOnly(record);
+          
+          // Marcar como sincronizado pero anotar que fue solo datos básicos
+          if (record.id) {
+            await markAsSynced(record.id);
+            const db = await initDB();
+            const updatedRecord = await getRecordById(record.id);
+            if (updatedRecord) {
+              updatedRecord.lastError = 'Sincronizado sin imágenes - imágenes corruptas o faltantes';
+              await db.put('pendingLuminarias', updatedRecord);
+            }
+          }
+          
+          totalBasicOnly++;
+          console.log(`📝 Recovery de datos básicos para poste ${record.numero_poste}`);
+          
+        } catch (error) {
+          // Estrategia 3: Marcar error pero no bloquear el sistema
+          totalFailed++;
+          console.error(`❌ Falló recovery completo para poste ${record.numero_poste}:`, error);
+          
+          if (record.id) {
+            try {
+              const db = await initDB();
+              const updatedRecord = await getRecordById(record.id);
+              if (updatedRecord) {
+                updatedRecord.lastError = `Auto-recovery falló: ${error instanceof Error ? error.message : 'Error desconocido'}`;
+                updatedRecord.retryCount = (updatedRecord.retryCount || 0) + 1;
+                await db.put('pendingLuminarias', updatedRecord);
+              }
+            } catch (dbError) {
+              console.error('Error actualizando registro con fallo de recovery:', dbError);
+            }
+          }
+        }
+        
+        // Pausa pequeña para no sobrecargar
+        await delay(300);
+        
+      } catch (error) {
+        totalFailed++;
+        console.error(`❌ Error general en auto-recovery para registro ${record.id}:`, error);
+      }
+    }
+    
+    console.log(`🏁 Auto-recovery completado: ${totalSynced} completos, ${totalBasicOnly} solo datos, ${totalFailed} fallidos`);
+    
+    return {
+      recovered: true,
+      synced: totalSynced,
+      basicDataOnly: totalBasicOnly,
+      failed: totalFailed
+    };
+    
+  } catch (error) {
+    console.error('❌ Error en auto-recovery:', error);
+    return { recovered: false, synced: totalSynced, basicDataOnly: totalBasicOnly, failed: totalFailed };
   }
 }

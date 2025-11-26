@@ -6,7 +6,7 @@ import {
   exportPendingData,
   type PendingLuminaria 
 } from '../../lib/offlineStorage';
-import { forceSyncAllRecords, syncAllPendingRecords } from '../../lib/syncService';
+import { forceSyncAllRecords, syncAllPendingRecords, resetSyncState, autoRecoverySync } from '../../lib/syncService';
 import { useOnlineStatus } from '../../lib/useOnlineStatus';
 
 export default function DatosPendientes() {
@@ -17,14 +17,40 @@ export default function DatosPendientes() {
   const isOnline = useOnlineStatus();
 
   useEffect(() => {
-    loadPendingRecords();
+    const initializeApp = async () => {
+      // Auto-recovery automático al cargar la página
+      try {
+        console.log('🔧 Iniciando auto-recovery automático...');
+        const recoveryResult = await autoRecoverySync();
+        
+        if (recoveryResult.recovered) {
+          if (recoveryResult.synced > 0 || recoveryResult.basicDataOnly > 0) {
+            console.log(`✅ Auto-recovery completado: ${recoveryResult.synced} completos, ${recoveryResult.basicDataOnly} solo datos básicos`);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error en auto-recovery:', error);
+      }
+      
+      // Cargar registros después del recovery
+      await loadPendingRecords();
+    };
+    
+    initializeApp();
   }, []);
 
-  // Auto-sincronización cuando hay conexión
+  // Auto-sincronización inteligente cuando hay conexión
   useEffect(() => {
     if (isOnline && pendingRecords.length > 0) {
       const autoSync = async () => {
         try {
+          // Intentar auto-recovery primero
+          const recoveryResult = await autoRecoverySync();
+          if (recoveryResult.synced > 0 || recoveryResult.basicDataOnly > 0) {
+            console.log(`✅ Auto-sync con recovery: ${recoveryResult.synced} completos, ${recoveryResult.basicDataOnly} solo datos`);
+          }
+          
+          // Intentar sync normal para cualquier registro que quede
           await syncAllPendingRecords();
           await loadPendingRecords();
         } catch (error) {
@@ -32,8 +58,8 @@ export default function DatosPendientes() {
         }
       };
       
-      // Esperar 2 segundos antes de auto-sincronizar
-      const timer = setTimeout(autoSync, 2000);
+      // Esperar 3 segundos antes de auto-sincronizar (más tiempo para recovery)
+      const timer = setTimeout(autoSync, 3000);
       return () => clearTimeout(timer);
     }
   }, [isOnline, pendingRecords.length]);
@@ -74,6 +100,8 @@ export default function DatosPendientes() {
       }
     } catch (error) {
       console.error('Error en forzar subida:', error);
+      // Resetear el estado global en caso de error
+      resetSyncState();
       alert('Error al forzar la subida: ' + error);
     } finally {
       setIsSyncing(false);
@@ -81,6 +109,8 @@ export default function DatosPendientes() {
       await loadPendingRecords();
     }
   };
+
+
 
   // Función para descargar datos como backup
   const handleDownloadData = async () => {
@@ -149,9 +179,11 @@ export default function DatosPendientes() {
           }`}>
             <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-400' : 'bg-red-400'}`}></div>
             <span className="text-sm font-medium">
-              {isOnline ? 'Conectado - Se subirán automáticamente' : 'Sin conexión - Datos almacenados localmente'}
+              {isOnline ? 'Conectado - Auto-recovery y sincronización automática activa' : 'Sin conexión - Datos almacenados localmente'}
             </span>
           </div>
+          
+
         </div>
 
         {/* Botones principales */}
