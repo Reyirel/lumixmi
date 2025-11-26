@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useNotifications } from '@/lib/NotificationSystem'
+import { getUserByEmail, userHasAccessToColonia, normalizeColoniaName, type UserSession } from '@/lib/users'
 
 type Colonia = {
   id: number
@@ -186,6 +187,9 @@ export default function AdminPage() {
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null)
   const [imageErrors, setImageErrors] = useState<{[key: string]: boolean}>({})
   
+  // Estado del usuario actual
+  const [currentUser, setCurrentUser] = useState<UserSession | null>(null)
+  
   // Estados para ordenamiento de luminarias
   const [sortField, setSortField] = useState<'numero_poste' | 'latitud' | 'longitud' | 'created_at'>('numero_poste')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
@@ -257,6 +261,32 @@ export default function AdminPage() {
       return
     }
 
+    // Cargar información del usuario actual
+    const userEmail = localStorage.getItem('userEmail')
+    const userName = localStorage.getItem('userName')
+    const userRole = localStorage.getItem('userRole') as 'admin' | 'encargado'
+    const userComunidadesStr = localStorage.getItem('userComunidades')
+    
+    if (userEmail) {
+      const user = getUserByEmail(userEmail)
+      if (user) {
+        setCurrentUser({
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          comunidades: user.comunidades
+        })
+      } else {
+        // Fallback: usar datos del localStorage
+        setCurrentUser({
+          email: userEmail,
+          name: userName || 'Usuario',
+          role: userRole || 'encargado',
+          comunidades: userComunidadesStr ? JSON.parse(userComunidadesStr) : []
+        })
+      }
+    }
+
     // Cargar datos inicialmente
     loadData()
   }, [router])
@@ -264,6 +294,9 @@ export default function AdminPage() {
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated')
     localStorage.removeItem('userEmail')
+    localStorage.removeItem('userName')
+    localStorage.removeItem('userRole')
+    localStorage.removeItem('userComunidades')
     router.push('/login')
   }
 
@@ -524,16 +557,45 @@ export default function AdminPage() {
     }
   }
 
-  const filteredColonias = colonias.filter(c => 
+  // Filtrar colonias según el usuario actual
+  // Admin ve todas, encargados solo ven sus comunidades asignadas
+  const userFilteredColonias = colonias.filter(c => {
+    if (!currentUser) return true // Si no hay usuario, mostrar todas (fallback)
+    if (currentUser.role === 'admin' || currentUser.comunidades.length === 0) return true
+    
+    // Normalizar y comparar nombres
+    const normalizedColoniaName = normalizeColoniaName(c.nombre)
+    return currentUser.comunidades.some(userColonia => 
+      normalizeColoniaName(userColonia) === normalizedColoniaName
+    )
+  })
+
+  // Aplicar filtro de búsqueda sobre las colonias del usuario
+  const filteredColonias = userFilteredColonias.filter(c => 
     c.nombre.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const totalLuminarias = luminarias.length
+  // Calcular luminarias solo de las comunidades del usuario
+  const userLuminarias = luminarias.filter(l => {
+    if (!currentUser) return true
+    if (currentUser.role === 'admin' || currentUser.comunidades.length === 0) return true
+    
+    // Encontrar la colonia de esta luminaria
+    const colonia = colonias.find(c => c.id === l.colonia_id)
+    if (!colonia) return false
+    
+    const normalizedColoniaName = normalizeColoniaName(colonia.nombre)
+    return currentUser.comunidades.some(userColonia => 
+      normalizeColoniaName(userColonia) === normalizedColoniaName
+    )
+  })
+
+  const totalLuminarias = userLuminarias.length
   const stats = {
     total: totalLuminarias,
-    watts25: luminarias.filter(l => l.watts === 25).length,
-    watts40: luminarias.filter(l => l.watts === 40).length,
-    watts80: luminarias.filter(l => l.watts === 80).length,
+    watts25: userLuminarias.filter(l => l.watts === 25).length,
+    watts40: userLuminarias.filter(l => l.watts === 40).length,
+    watts80: userLuminarias.filter(l => l.watts === 80).length,
   }
 
 
@@ -575,9 +637,21 @@ export default function AdminPage() {
                 </svg>
               </div>
               <div className="min-w-0">
-                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">Panel de Administrador</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
+                  {currentUser?.role === 'admin' ? 'Panel de Administrador' : `Panel de ${currentUser?.name || 'Usuario'}`}
+                </h1>
                 <div className="flex items-center space-x-2 text-xs sm:text-sm text-gray-600">
-                  <span className="truncate max-w-[200px] sm:max-w-none">{localStorage.getItem('userEmail')}</span>
+                  <span className="truncate max-w-[200px] sm:max-w-none">{currentUser?.email || localStorage.getItem('userEmail')}</span>
+                  {currentUser?.role === 'encargado' && (
+                    <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs font-medium">
+                      {currentUser.comunidades.length} comunidades
+                    </span>
+                  )}
+                  {currentUser?.role === 'admin' && (
+                    <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-xs font-medium">
+                      Admin
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

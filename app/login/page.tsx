@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { authenticateUser, createUserSession } from '@/lib/users'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -16,12 +17,19 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      // Credenciales hardcodeadas para el administrador
-      // En producción, esto debería usar Supabase Auth o similar
-      if (email === 'admin@lumixmi.com' && password === 'admin123') {
+      // Autenticar usuario con el sistema de usuarios locales
+      const user = authenticateUser(email, password)
+      
+      if (user) {
+        // Crear sesión del usuario
+        const session = createUserSession(user)
+        
         // Guardar sesión en localStorage
         localStorage.setItem('isAuthenticated', 'true')
-        localStorage.setItem('userEmail', email)
+        localStorage.setItem('userEmail', user.email)
+        localStorage.setItem('userName', user.name)
+        localStorage.setItem('userRole', user.role)
+        localStorage.setItem('userComunidades', JSON.stringify(user.comunidades))
         
         // Redirigir al panel de administrador
         router.push('/admin')
@@ -131,13 +139,54 @@ export default function LoginPage() {
           {/* Divider - Solo en desarrollo */}
           {process.env.NODE_ENV === 'development' && (
             <div className="mt-6 pt-6 border-t border-gray-200">
-              <div className="bg-gray-50 rounded-lg p-4">
+              <div className="bg-gray-50 rounded-lg p-4 max-h-60 overflow-y-auto">
                 <p className="text-xs font-semibold text-gray-700 mb-2">
                   🔐 Credenciales de prueba:
                 </p>
-                <div className="space-y-1 text-xs text-gray-600">
-                  <p><span className="font-medium">Email:</span> admin@lumixmi.com</p>
-                  <p><span className="font-medium">Contraseña:</span> admin123</p>
+                <div className="space-y-2 text-xs text-gray-600">
+                  <div className="bg-white p-2 rounded border">
+                    <p className="font-bold text-gray-800">Administrador (todas)</p>
+                    <p><span className="font-medium">Email:</span> admin@lumixmi.com</p>
+                    <p><span className="font-medium">Contraseña:</span> admin123</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white p-2 rounded border">
+                      <p className="font-semibold text-gray-700">Edgar lugo</p>
+                      <p className="text-[10px]">edagrlugo@lumixmi.com / edagrlugo123</p>
+                    </div>
+                    <div className="bg-white p-2 rounded border">
+                      <p className="font-semibold text-gray-700">Marco</p>
+                      <p className="text-[10px]">marco@lumixmi.com / marco123</p>
+                    </div>
+                    <div className="bg-white p-2 rounded border">
+                      <p className="font-semibold text-gray-700">Arturo</p>
+                      <p className="text-[10px]">arturo@lumixmi.com / arturo123</p>
+                    </div>
+                    <div className="bg-white p-2 rounded border">
+                      <p className="font-semibold text-gray-700">Brenda</p>
+                      <p className="text-[10px]">brenda@lumixmi.com / brenda123</p>
+                    </div>
+                    <div className="bg-white p-2 rounded border">
+                      <p className="font-semibold text-gray-700">Aneth</p>
+                      <p className="text-[10px]">aneth@lumixmi.com / aneth123</p>
+                    </div>
+                    <div className="bg-white p-2 rounded border">
+                      <p className="font-semibold text-gray-700">Aquino</p>
+                      <p className="text-[10px]">aquino@lumixmi.com / aquino123</p>
+                    </div>
+                    <div className="bg-white p-2 rounded border">
+                      <p className="font-semibold text-gray-700">Rigo</p>
+                      <p className="text-[10px]">rigo@lumixmi.com / rigo123</p>
+                    </div>
+                    <div className="bg-white p-2 rounded border">
+                      <p className="font-semibold text-gray-700">Castellanos</p>
+                      <p className="text-[10px]">castellanos@lumixmi.com / castellanos123</p>
+                    </div>
+                    <div className="bg-white p-2 rounded border">
+                      <p className="font-semibold text-gray-700">Diego</p>
+                      <p className="text-[10px]">diego@lumixmi.com / diego123</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
