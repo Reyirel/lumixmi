@@ -41,15 +41,232 @@ export function getSyncState(): boolean {
   return isSyncing;
 }
 
-// Número máximo de reintentos para cada registro
+// Configuración para chunking y sincronización
 const MAX_RETRIES = 3;
-
-// Delay entre reintentos (en ms)
 const RETRY_DELAY = 2000;
+const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB por archivo (límite seguro para Vercel)
+const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB por chunk
+const MAX_CONCURRENT_UPLOADS = 2; // Máximo 2 uploads concurrentes
+const RECORDS_PER_BATCH = 3; // Procesar máximo 3 registros por lote
 
 // Función auxiliar para esperar
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Función para comprimir imagen si es muy grande
+async function compressImageIfNeeded(blob: Blob, maxSize: number = MAX_FILE_SIZE): Promise<Blob> {
+  if (blob.size <= maxSize) {
+    return blob;
+  }
+
+  console.log(`🗜️ Comprimiendo imagen de ${(blob.size / 1024 / 1024).toFixed(2)}MB a menos de ${(maxSize / 1024 / 1024).toFixed(2)}MB`);
+  
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    const img = new Image();
+    
+    img.onload = () => {
+      // Calcular nuevas dimensiones manteniendo aspect ratio
+      let { width, height } = img;
+      const aspectRatio = width / height;
+      
+      // Reducir dimensiones si la imagen es muy grande
+      const maxDimension = 1920; // Full HD máximo
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          width = maxDimension;
+          height = width / aspectRatio;
+        } else {
+          height = maxDimension;
+          width = height * aspectRatio;
+        }
+      }
+      
+      canvas.width = width;
+      canvas.height = height;
+      
+      // Dibujar imagen redimensionada
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      // Convertir a blob con compresión
+      canvas.toBlob(
+        (compressedBlob) => {
+          if (compressedBlob && compressedBlob.size < blob.size) {
+            console.log(`✅ Imagen comprimida: ${(blob.size / 1024 / 1024).toFixed(2)}MB → ${(compressedBlob.size / 1024 / 1024).toFixed(2)}MB`);
+            resolve(compressedBlob);
+          } else {
+            console.log(`⚠️ No se pudo comprimir, usando imagen original`);
+            resolve(blob);
+          }
+        },
+        'image/jpeg',
+        0.8 // 80% calidad
+      );
+    };
+    
+    img.onerror = () => resolve(blob);
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+// Función para subir archivo con reintentos y control de tamaño
+async function uploadFileWithRetry(
+  file: File, 
+  retryCount: number = 0
+): Promise<{ publicUrl: string }> {
+  try {
+    // Verificar tamaño antes de subir
+    if (file.size > MAX_FILE_SIZE) {
+      throw new Error(`Archivo demasiado grande: ${(file.size / 1024 / 1024).toFixed(2)}MB > ${(MAX_FILE_SIZE / 1024 / 1024).toFixed(2)}MB`);
+    }
+
+    console.log(`📤 Subiendo archivo: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Sin detalles');
+      
+      // Si es error 413 (Payload Too Large), la imagen es muy grande
+      if (response.status === 413) {
+        throw new Error(`Archivo demasiado grande para el servidor: ${file.name}`);
+      }
+      
+      throw new Error(`Error ${response.status} subiendo ${file.name}: ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log(`✅ Archivo subido exitosamente: ${file.name}`);
+    return result;
+
+  } catch (error) {
+    console.error(`❌ Error subiendo archivo ${file.name}:`, error);
+    
+    if (retryCount < MAX_RETRIES) {
+      console.log(`🔄 Reintentando subida de ${file.name} (intento ${retryCount + 1}/${MAX_RETRIES})`);
+      await delay(RETRY_DELAY * (retryCount + 1));
+      return uploadFileWithRetry(file, retryCount + 1);
+    }
+    
+    throw error;
+  }
+}
+
+// Función para dividir archivos muy grandes en chunks
+async function uploadLargeFileInChunks(
+  file: File,
+  chunkSize: number = CHUNK_SIZE
+): Promise<{ publicUrl: string }> {
+  const totalChunks = Math.ceil(file.size / chunkSize);
+  
+  if (totalChunks === 1) {
+    // Si no necesita chunking, usar método normal
+    return uploadFileWithRetry(file);
+  }
+
+  console.log(`📦 Archivo grande detectado: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+  console.log(`🔪 Dividiendo en ${totalChunks} chunks de ${(chunkSize / 1024 / 1024).toFixed(2)}MB`);
+
+  const uploadId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const uploadedChunks: string[] = [];
+
+  // Subir cada chunk
+  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+    const start = chunkIndex * chunkSize;
+    const end = Math.min(start + chunkSize, file.size);
+    const chunk = file.slice(start, end);
+    
+    const chunkFile = new File(
+      [chunk], 
+      `${file.name}.chunk.${chunkIndex}.${uploadId}`,
+      { type: file.type }
+    );
+
+    console.log(`📤 Subiendo chunk ${chunkIndex + 1}/${totalChunks} (${(chunk.size / 1024 / 1024).toFixed(2)}MB)`);
+
+    try {
+      const result = await uploadFileWithRetry(chunkFile);
+      uploadedChunks.push(result.publicUrl);
+      
+      // Pausa pequeña entre chunks
+      await delay(500);
+      
+    } catch (error) {
+      console.error(`❌ Error subiendo chunk ${chunkIndex + 1}:`, error);
+      throw new Error(`Error en chunk ${chunkIndex + 1}/${totalChunks}: ${error}`);
+    }
+  }
+
+  // Una vez subidos todos los chunks, enviar info al servidor para reconstruir
+  try {
+    console.log(`🔧 Reconstruyendo archivo desde ${totalChunks} chunks...`);
+    
+    const reconstructResponse = await fetch('/api/upload/reconstruct', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        uploadId,
+        fileName: file.name,
+        chunks: uploadedChunks,
+        totalChunks,
+        fileSize: file.size,
+        mimeType: file.type
+      })
+    });
+
+    if (!reconstructResponse.ok) {
+      throw new Error(`Error reconstruyendo archivo: ${reconstructResponse.status}`);
+    }
+
+    const result = await reconstructResponse.json();
+    console.log(`✅ Archivo reconstruido exitosamente: ${file.name}`);
+    
+    return result;
+
+  } catch (error) {
+    console.error(`❌ Error reconstruyendo archivo:`, error);
+    throw error;
+  }
+}
+
+// Función inteligente que decide si usar chunking o no
+async function smartUploadFile(file: File): Promise<{ publicUrl: string }> {
+  console.log(`🔍 Analizando archivo: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+
+  // Si el archivo es menor al límite, usar método normal
+  if (file.size <= MAX_FILE_SIZE) {
+    console.log(`✅ Archivo dentro del límite, subida normal`);
+    return uploadFileWithRetry(file);
+  }
+
+  // Si es muy grande pero menos de 3x el límite, intentar compresión primero
+  if (file.size <= MAX_FILE_SIZE * 3 && file.type.startsWith('image/')) {
+    console.log(`🗜️ Intentando compresión antes de chunking...`);
+    
+    try {
+      const compressedBlob = await compressImageIfNeeded(file, MAX_FILE_SIZE * 0.8); // 80% del límite para margen
+      
+      if (compressedBlob.size < file.size) {
+        const compressedFile = new File([compressedBlob], file.name, { type: file.type });
+        console.log(`✅ Compresión exitosa: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`);
+        return uploadFileWithRetry(compressedFile);
+      }
+    } catch (compressionError) {
+      console.warn(`⚠️ Compresión falló, usando chunking:`, compressionError);
+    }
+  }
+
+  // Si todo lo demás falla, usar chunking
+  console.log(`📦 Archivo demasiado grande, usando chunking...`);
+  return uploadLargeFileInChunks(file);
 }
 
 // Función para verificar si un Blob es válido
@@ -57,7 +274,7 @@ function isValidBlob(blob: unknown): blob is Blob {
   return blob instanceof Blob && blob.size > 0;
 }
 
-// Función para sincronizar un registro pendiente con reintentos automáticos
+// Función para sincronizar un registro pendiente con reintentos automáticos y chunking
 export async function syncRecord(record: {
   id?: number;
   colonia_id: number;
@@ -94,58 +311,38 @@ export async function syncRecord(record: {
       throw new Error('Imagen de fotocelda inválida');
     }
 
-    // Convertir Blobs a Files
-    const imageFile = blobToFile(record.imagen, `luminaria-${record.numero_poste}-${Date.now()}.jpg`);
-    const imageWattsFile = blobToFile(record.imagen_watts, `watts-${record.numero_poste}-${Date.now()}.jpg`);
-    const imageFotoceldaFile = blobToFile(record.imagen_fotocelda, `fotocelda-${record.numero_poste}-${Date.now()}.jpg`);
+    console.log(`📤 Preparando imágenes para registro ${record.id} (Poste: ${record.numero_poste})`);
+    
+    // Comprimir imágenes si son muy grandes
+    const compressedImagen = await compressImageIfNeeded(record.imagen);
+    const compressedImagenWatts = await compressImageIfNeeded(record.imagen_watts);
+    const compressedImagenFotocelda = await compressImageIfNeeded(record.imagen_fotocelda);
 
-    console.log(`📤 Subiendo imágenes para registro ${record.id}...`);
+    // Convertir Blobs comprimidos a Files
+    const imageFile = blobToFile(compressedImagen, `luminaria-${record.numero_poste}-${Date.now()}.jpg`);
+    const imageWattsFile = blobToFile(compressedImagenWatts, `watts-${record.numero_poste}-${Date.now()}.jpg`);
+    const imageFotoceldaFile = blobToFile(compressedImagenFotocelda, `fotocelda-${record.numero_poste}-${Date.now()}.jpg`);
 
-    // Paso 1: Subir las 3 imágenes
-    const uploadPromises = [
-      fetch('/api/upload', {
-        method: 'POST',
-        body: (() => {
-          const fd = new FormData();
-          fd.append('file', imageFile);
-          return fd;
-        })(),
-      }),
-      fetch('/api/upload', {
-        method: 'POST',
-        body: (() => {
-          const fd = new FormData();
-          fd.append('file', imageWattsFile);
-          return fd;
-        })(),
-      }),
-      fetch('/api/upload', {
-        method: 'POST',
-        body: (() => {
-          const fd = new FormData();
-          fd.append('file', imageFotoceldaFile);
-          return fd;
-        })(),
-      }),
-    ];
+    console.log(`📤 Subiendo imágenes para registro ${record.id} con sistema inteligente...`);
 
-    const uploadResponses = await Promise.all(uploadPromises);
+    // SISTEMA INTELIGENTE: Usar subida inteligente que decide automáticamente
+    // entre compresión, chunking o subida normal según el tamaño
+    
+    console.log(`📤 [1/3] Procesando imagen de luminaria...`);
+    const uploadResult1 = await smartUploadFile(imageFile);
+    
+    // Pausa pequeña entre subidas para no sobrecargar
+    await delay(800);
+    
+    console.log(`📤 [2/3] Procesando imagen de watts...`);
+    const uploadResult2 = await smartUploadFile(imageWattsFile);
+    
+    await delay(800);
+    
+    console.log(`📤 [3/3] Procesando imagen de fotocelda...`);
+    const uploadResult3 = await smartUploadFile(imageFotoceldaFile);
 
-    // Verificar que todas las subidas fueron exitosas
-    for (let i = 0; i < uploadResponses.length; i++) {
-      const response = uploadResponses[i];
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Sin detalles');
-        console.error(`❌ Error subiendo imagen ${i + 1}:`, response.status, errorText);
-        throw new Error(`Error al subir imagen ${i + 1}: ${response.status}`);
-      }
-    }
-
-    const [uploadResult1, uploadResult2, uploadResult3] = await Promise.all(
-      uploadResponses.map((r) => r.json())
-    );
-
-    console.log(`✅ Imágenes subidas exitosamente para registro ${record.id}`);
+    console.log(`✅ Las 3 imágenes procesadas y subidas exitosamente para registro ${record.id}`);
 
     // Paso 2: Crear la luminaria
     const payload = {
@@ -200,7 +397,7 @@ export async function syncRecord(record: {
   }
 }
 
-// Función para sincronizar todos los registros pendientes con reintentos automáticos
+// Función para sincronizar todos los registros pendientes con control de lotes (batches)
 export async function syncAllPendingRecords(): Promise<{
   success: number;
   failed: number;
@@ -222,58 +419,86 @@ export async function syncAllPendingRecords(): Promise<{
       return { success: 0, failed: 0, skipped: 0 };
     }
 
-    console.log(`🔄 Iniciando sincronización de ${pendingRecords.length} registros pendientes...`);
+    console.log(`🔄 Iniciando sincronización inteligente de ${pendingRecords.length} registros en lotes de ${RECORDS_PER_BATCH}...`);
 
     let successCount = 0;
     let failedCount = 0;
     let skippedCount = 0;
 
-    // Procesar registros uno por uno para evitar sobrecarga
+    // Filtrar registros válidos primero
+    const validRecords = [];
     for (const record of pendingRecords) {
-      try {
-        // Verificación doble: comprobar si ya está sincronizado
-        if (record.id) {
-          const alreadySynced = await isRecordSynced(record.id);
-          if (alreadySynced) {
-            console.log(`⏭️ Registro ${record.id} ya sincronizado, saltando...`);
-            skippedCount++;
-            continue;
-          }
-        }
-
-        // Verificar que el registro tenga datos válidos antes de intentar
-        const hasValidImages = 
-          record.imagen instanceof Blob && record.imagen.size > 0 &&
-          record.imagen_watts instanceof Blob && record.imagen_watts.size > 0 &&
-          record.imagen_fotocelda instanceof Blob && record.imagen_fotocelda.size > 0;
-
-        if (!hasValidImages) {
-          console.warn(`⚠️ Registro ${record.id} tiene imágenes inválidas o faltantes, saltando...`);
-          failedCount++;
+      // Verificación doble: comprobar si ya está sincronizado
+      if (record.id) {
+        const alreadySynced = await isRecordSynced(record.id);
+        if (alreadySynced) {
+          console.log(`⏭️ Registro ${record.id} ya sincronizado, saltando...`);
+          skippedCount++;
           continue;
         }
+      }
 
-        console.log(`🔄 Procesando registro ${record.id}: Poste ${record.numero_poste}`);
-        
-        // syncRecord ya tiene reintentos internos
-        await syncRecord(record);
-        successCount++;
-        console.log(`✅ Registro ${record.id} (Poste: ${record.numero_poste}) sincronizado exitosamente`);
-        
-        // Pequeña pausa entre registros para no sobrecargar el servidor
-        await delay(500);
-        
-      } catch (error) {
+      // Verificar que el registro tenga datos válidos antes de intentar
+      const hasValidImages = 
+        record.imagen instanceof Blob && record.imagen.size > 0 &&
+        record.imagen_watts instanceof Blob && record.imagen_watts.size > 0 &&
+        record.imagen_fotocelda instanceof Blob && record.imagen_fotocelda.size > 0;
+
+      if (!hasValidImages) {
+        console.warn(`⚠️ Registro ${record.id} tiene imágenes inválidas o faltantes, saltando...`);
         failedCount++;
-        console.error(`❌ Error sincronizando registro ${record.id} (Poste: ${record.numero_poste}):`, error);
-        if (error instanceof Error) {
-          console.error(`Detalles: ${error.message}`);
+        continue;
+      }
+
+      validRecords.push(record);
+    }
+
+    if (validRecords.length === 0) {
+      console.log('✅ No hay registros válidos para sincronizar');
+      return { success: successCount, failed: failedCount, skipped: skippedCount };
+    }
+
+    // Procesar en lotes pequeños para evitar sobrecarga
+    console.log(`📦 Procesando ${validRecords.length} registros válidos en lotes de ${RECORDS_PER_BATCH}`);
+    
+    for (let i = 0; i < validRecords.length; i += RECORDS_PER_BATCH) {
+      const batch = validRecords.slice(i, i + RECORDS_PER_BATCH);
+      const batchNumber = Math.floor(i / RECORDS_PER_BATCH) + 1;
+      const totalBatches = Math.ceil(validRecords.length / RECORDS_PER_BATCH);
+      
+      console.log(`📦 Procesando lote ${batchNumber}/${totalBatches} (${batch.length} registros)`);
+      
+      // Procesar cada registro del lote secuencialmente
+      for (const record of batch) {
+        try {
+          console.log(`🔄 [Lote ${batchNumber}] Procesando registro ${record.id}: Poste ${record.numero_poste}`);
+          
+          // syncRecord ya tiene reintentos internos y compresión de imágenes
+          await syncRecord(record);
+          successCount++;
+          console.log(`✅ [Lote ${batchNumber}] Registro ${record.id} (Poste: ${record.numero_poste}) sincronizado exitosamente`);
+          
+          // Pequeña pausa entre registros dentro del lote
+          await delay(1000);
+          
+        } catch (error) {
+          failedCount++;
+          console.error(`❌ [Lote ${batchNumber}] Error sincronizando registro ${record.id} (Poste: ${record.numero_poste}):`, error);
+          if (error instanceof Error) {
+            console.error(`Detalles: ${error.message}`);
+          }
+          // Continuar con el siguiente registro en lugar de detener todo
         }
-        // Continuar con el siguiente registro en lugar de detener todo
+      }
+      
+      // Pausa más larga entre lotes para dar respiro al servidor
+      if (i + RECORDS_PER_BATCH < validRecords.length) {
+        console.log(`⏳ Pausa entre lotes... (${successCount + failedCount}/${validRecords.length} procesados)`);
+        await delay(3000); // 3 segundos entre lotes
       }
     }
 
-    console.log(`📊 Sincronización completada: ${successCount} éxito, ${failedCount} fallos, ${skippedCount} saltados`);
+    console.log(`📊 Sincronización por lotes completada: ${successCount} éxito, ${failedCount} fallos, ${skippedCount} saltados`);
     
     return { success: successCount, failed: failedCount, skipped: skippedCount };
   } finally {
@@ -712,4 +937,365 @@ export async function autoRecoverySync(): Promise<{
     console.error('❌ Error en auto-recovery:', error);
     return { recovered: false, synced: totalSynced, basicDataOnly: totalBasicOnly, failed: totalFailed };
   }
+}
+
+// Función de sincronización inteligente con chunking automático
+export async function smartSync(
+  onProgress?: (current: number, total: number, status: string) => void
+): Promise<{
+  success: number;
+  failed: number;
+  skipped: number;
+  totalProcessed: number;
+  strategy: string;
+}> {
+  if (isSyncing) {
+    console.log('⚠️ Ya hay una sincronización en proceso, saltando...');
+    return { success: 0, failed: 0, skipped: 0, totalProcessed: 0, strategy: 'skipped' };
+  }
+
+  isSyncing = true;
+
+  try {
+    const pendingRecords = await getPendingRecords();
+    const unsyncedRecords = pendingRecords.filter(r => !r.synced);
+    
+    if (unsyncedRecords.length === 0) {
+      onProgress?.(0, 0, 'No hay registros pendientes');
+      return { success: 0, failed: 0, skipped: 0, totalProcessed: 0, strategy: 'no-records' };
+    }
+
+    // Analizar el tamaño total de los datos para decidir estrategia
+    let totalSize = 0;
+    let largeFilesCount = 0;
+    
+    for (const record of unsyncedRecords) {
+      const recordSize = (record.imagen?.size || 0) + 
+                        (record.imagen_watts?.size || 0) + 
+                        (record.imagen_fotocelda?.size || 0);
+      totalSize += recordSize;
+      
+      if (recordSize > MAX_FILE_SIZE * 2) { // Si las 3 imágenes juntas > 8MB
+        largeFilesCount++;
+      }
+    }
+
+    // Decidir estrategia basada en el análisis
+    let strategy = 'standard';
+    let batchSize = RECORDS_PER_BATCH;
+    let delayBetweenRecords = 1000;
+    let delayBetweenBatches = 3000;
+
+    if (totalSize > 50 * 1024 * 1024) { // > 50MB total
+      strategy = 'ultra-conservative';
+      batchSize = 1;
+      delayBetweenRecords = 3000;
+      delayBetweenBatches = 5000;
+    } else if (largeFilesCount > 5) { // Muchos archivos grandes
+      strategy = 'conservative';
+      batchSize = 2;
+      delayBetweenRecords = 2000;
+      delayBetweenBatches = 4000;
+    } else if (unsyncedRecords.length > 20) { // Muchos registros
+      strategy = 'batch-optimized';
+      batchSize = 5;
+      delayBetweenRecords = 800;
+      delayBetweenBatches = 2000;
+    }
+
+    console.log(`🧠 Estrategia inteligente: ${strategy}`);
+    console.log(`📊 Análisis: ${unsyncedRecords.length} registros, ${(totalSize / 1024 / 1024).toFixed(2)}MB total, ${largeFilesCount} archivos grandes`);
+    console.log(`⚙️ Configuración: Lotes de ${batchSize}, pausa ${delayBetweenRecords}ms entre registros, ${delayBetweenBatches}ms entre lotes`);
+
+    let successCount = 0;
+    let failedCount = 0;
+    let skippedCount = 0;
+
+    // Validar registros primero
+    const validRecords = [];
+    for (const record of unsyncedRecords) {
+      const hasValidImages = 
+        record.imagen instanceof Blob && record.imagen.size > 0 &&
+        record.imagen_watts instanceof Blob && record.imagen_watts.size > 0 &&
+        record.imagen_fotocelda instanceof Blob && record.imagen_fotocelda.size > 0;
+
+      if (!hasValidImages) {
+        console.warn(`⚠️ Registro ${record.id} tiene imágenes inválidas, saltando...`);
+        skippedCount++;
+        continue;
+      }
+
+      validRecords.push(record);
+    }
+
+    // Procesar en lotes según la estrategia
+    for (let i = 0; i < validRecords.length; i += batchSize) {
+      const batch = validRecords.slice(i, i + batchSize);
+      const batchNumber = Math.floor(i / batchSize) + 1;
+      const totalBatches = Math.ceil(validRecords.length / batchSize);
+      
+      onProgress?.(i + 1, validRecords.length, `Procesando lote ${batchNumber}/${totalBatches}`);
+      
+      for (const record of batch) {
+        try {
+          onProgress?.(successCount + failedCount + 1, validRecords.length, `Sincronizando poste ${record.numero_poste}`);
+          
+          await syncRecord(record);
+          successCount++;
+          
+          console.log(`✅ [${strategy}] Registro ${record.id} sincronizado (${successCount}/${validRecords.length})`);
+          
+          // Pausa entre registros según estrategia
+          if (successCount + failedCount < validRecords.length) {
+            await delay(delayBetweenRecords);
+          }
+          
+        } catch (error) {
+          failedCount++;
+          console.error(`❌ [${strategy}] Error en registro ${record.id}:`, error);
+        }
+      }
+      
+      // Pausa entre lotes según estrategia
+      if (i + batchSize < validRecords.length) {
+        onProgress?.(successCount + failedCount, validRecords.length, `Pausa entre lotes...`);
+        await delay(delayBetweenBatches);
+      }
+    }
+
+    const result = {
+      success: successCount,
+      failed: failedCount,
+      skipped: skippedCount,
+      totalProcessed: validRecords.length,
+      strategy
+    };
+
+    console.log(`🏁 Sincronización inteligente completada:`, result);
+    onProgress?.(validRecords.length, validRecords.length, `Completado: ${successCount} éxito, ${failedCount} fallos`);
+    
+    return result;
+
+  } finally {
+    isSyncing = false;
+  }
+}
+
+// Función para obtener estadísticas de sincronización
+export async function getSyncStats(): Promise<{
+  total: number;
+  pending: number;
+  synced: number;
+  failed: number;
+  totalSize: string;
+  avgFileSize: string;
+  largeFiles: number;
+}> {
+  const allRecords = await getPendingRecords();
+  const pendingCount = allRecords.filter(r => !r.synced).length;
+  const syncedCount = allRecords.filter(r => r.synced).length;
+  const failedCount = allRecords.filter(r => r.lastError && !r.synced).length;
+  
+  let totalSize = 0;
+  let largeFilesCount = 0;
+  
+  for (const record of allRecords) {
+    const recordSize = (record.imagen?.size || 0) + 
+                      (record.imagen_watts?.size || 0) + 
+                      (record.imagen_fotocelda?.size || 0);
+    totalSize += recordSize;
+    
+    if (recordSize > MAX_FILE_SIZE * 2) {
+      largeFilesCount++;
+    }
+  }
+  
+  const avgFileSize = allRecords.length > 0 ? totalSize / allRecords.length : 0;
+  
+  return {
+    total: allRecords.length,
+    pending: pendingCount,
+    synced: syncedCount,
+    failed: failedCount,
+    totalSize: `${(totalSize / 1024 / 1024).toFixed(2)}MB`,
+    avgFileSize: `${(avgFileSize / 1024 / 1024).toFixed(2)}MB`,
+    largeFiles: largeFilesCount
+  };
+}
+
+// Función de diagnóstico avanzado del sistema
+export async function advancedDiagnosis(): Promise<{
+  summary: {
+    totalRecords: number;
+    pendingRecords: number;
+    syncedRecords: number;
+    errorRecords: number;
+    totalSizeMB: number;
+    avgSizeMB: number;
+  };
+  sizeBrackets: {
+    small: number;    // < 2MB por registro
+    medium: number;   // 2-8MB por registro  
+    large: number;    // 8-20MB por registro
+    xlarge: number;   // > 20MB por registro
+  };
+  recommendedStrategy: string;
+  estimatedTime: string;
+  risks: string[];
+  recommendations: string[];
+}> {
+  const allRecords = await getPendingRecords();
+  const unsyncedRecords = allRecords.filter(r => !r.synced);
+  
+  let totalSize = 0;
+  const sizeBrackets = { small: 0, medium: 0, large: 0, xlarge: 0 };
+  const risks: string[] = [];
+  const recommendations: string[] = [];
+  
+  // Analizar cada registro
+  for (const record of allRecords) {
+    const recordSize = (record.imagen?.size || 0) + 
+                      (record.imagen_watts?.size || 0) + 
+                      (record.imagen_fotocelda?.size || 0);
+    totalSize += recordSize;
+    
+    const sizeInMB = recordSize / (1024 * 1024);
+    
+    if (sizeInMB < 2) sizeBrackets.small++;
+    else if (sizeInMB < 8) sizeBrackets.medium++;
+    else if (sizeInMB < 20) sizeBrackets.large++;
+    else sizeBrackets.xlarge++;
+  }
+  
+  const avgSize = allRecords.length > 0 ? totalSize / allRecords.length : 0;
+  const totalSizeMB = totalSize / (1024 * 1024);
+  const avgSizeMB = avgSize / (1024 * 1024);
+  
+  // Determinar estrategia recomendada
+  let recommendedStrategy = 'standard';
+  let estimatedTime = '5-10 minutos';
+  
+  if (sizeBrackets.xlarge > 5) {
+    recommendedStrategy = 'chunking-heavy';
+    estimatedTime = '20-40 minutos';
+    risks.push('Archivos extremadamente grandes detectados');
+    recommendations.push('Usar sincronización inteligente con chunking automático');
+    recommendations.push('Verificar conexión estable a internet');
+  } else if (totalSizeMB > 100) {
+    recommendedStrategy = 'batch-conservative';
+    estimatedTime = '15-30 minutos';
+    risks.push('Volumen total de datos muy alto');
+    recommendations.push('Procesar en lotes pequeños');
+  } else if (sizeBrackets.large > 10) {
+    recommendedStrategy = 'compression-first';
+    estimatedTime = '10-20 minutos';
+    risks.push('Muchos archivos grandes que pueden beneficiarse de compresión');
+    recommendations.push('Aplicar compresión automática');
+  } else if (unsyncedRecords.length > 50) {
+    recommendedStrategy = 'high-volume';
+    estimatedTime = '10-15 minutos';
+    recommendations.push('Procesar en lotes para evitar timeouts');
+  }
+  
+  // Riesgos adicionales
+  if (totalSizeMB > 200) {
+    risks.push('Riesgo alto de timeout en conexiones lentas');
+  }
+  
+  if (sizeBrackets.xlarge > 0) {
+    risks.push(`${sizeBrackets.xlarge} archivos requieren chunking especial`);
+  }
+  
+  const errorCount = allRecords.filter(r => r.lastError && !r.synced).length;
+  if (errorCount > 0) {
+    risks.push(`${errorCount} registros con errores previos`);
+    recommendations.push('Revisar y corregir errores antes de sincronizar');
+  }
+  
+  // Recomendaciones generales
+  if (avgSizeMB > 5) {
+    recommendations.push('Considerar reducir calidad de imágenes para futuras capturas');
+  }
+  
+  if (unsyncedRecords.length > 20) {
+    recommendations.push('Sincronizar con mayor frecuencia para evitar acumulación');
+  }
+  
+  recommendations.push('Mantener conexión estable durante todo el proceso');
+  recommendations.push('Usar "Sincronización Inteligente" para mejor rendimiento');
+  
+  return {
+    summary: {
+      totalRecords: allRecords.length,
+      pendingRecords: unsyncedRecords.length,
+      syncedRecords: allRecords.filter(r => r.synced).length,
+      errorRecords: errorCount,
+      totalSizeMB: Math.round(totalSizeMB * 100) / 100,
+      avgSizeMB: Math.round(avgSizeMB * 100) / 100,
+    },
+    sizeBrackets,
+    recommendedStrategy,
+    estimatedTime,
+    risks,
+    recommendations
+  };
+}
+
+// Función para limpiar registros muy antiguos o corruptos
+export async function cleanupOldRecords(daysOld: number = 30): Promise<{
+  deleted: number;
+  errors: string[];
+}> {
+  console.log(`🧹 Iniciando limpieza de registros anteriores a ${daysOld} días...`);
+  
+  const allRecords = await getPendingRecords();
+  const cutoffDate = Date.now() - (daysOld * 24 * 60 * 60 * 1000);
+  
+  let deletedCount = 0;
+  const errors: string[] = [];
+  
+  const db = await initDB();
+  
+  for (const record of allRecords) {
+    // Solo eliminar registros muy antiguos que ya estén sincronizados
+    if (record.timestamp < cutoffDate && record.synced) {
+      try {
+        if (record.id) {
+          await db.delete('pendingLuminarias', record.id);
+          deletedCount++;
+          console.log(`🗑️ Eliminado registro antiguo: ${record.numero_poste} (${new Date(record.timestamp).toLocaleDateString()})`);
+        }
+      } catch (error) {
+        const errorMsg = `Error eliminando registro ${record.id}: ${error}`;
+        errors.push(errorMsg);
+        console.error(errorMsg);
+      }
+    }
+    
+    // También eliminar registros claramente corruptos (sin imágenes válidas)
+    if (!record.synced) {
+      const hasValidImages = 
+        record.imagen instanceof Blob && record.imagen.size > 0 &&
+        record.imagen_watts instanceof Blob && record.imagen_watts.size > 0 &&
+        record.imagen_fotocelda instanceof Blob && record.imagen_fotocelda.size > 0;
+      
+      if (!hasValidImages && record.timestamp < cutoffDate) {
+        try {
+          if (record.id) {
+            await db.delete('pendingLuminarias', record.id);
+            deletedCount++;
+            console.log(`🗑️ Eliminado registro corrupto: ${record.numero_poste}`);
+          }
+        } catch (error) {
+          const errorMsg = `Error eliminando registro corrupto ${record.id}: ${error}`;
+          errors.push(errorMsg);
+          console.error(errorMsg);
+        }
+      }
+    }
+  }
+  
+  console.log(`✅ Limpieza completada: ${deletedCount} registros eliminados`);
+  
+  return { deleted: deletedCount, errors };
 }

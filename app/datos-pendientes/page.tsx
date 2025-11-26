@@ -6,14 +6,26 @@ import {
   exportPendingData,
   type PendingLuminaria 
 } from '../../lib/offlineStorage';
-import { forceSyncAllRecords, syncAllPendingRecords, resetSyncState, autoRecoverySync } from '../../lib/syncService';
+import { 
+  forceSyncAllRecords, 
+  syncAllPendingRecords, 
+  resetSyncState, 
+  autoRecoverySync,
+  smartSync,
+  getSyncStats,
+  advancedDiagnosis,
+  cleanupOldRecords
+} from '../../lib/syncService';
 import { useOnlineStatus } from '../../lib/useOnlineStatus';
 
 export default function DatosPendientes() {
   const [pendingRecords, setPendingRecords] = useState<PendingLuminaria[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 });
+  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0, status: '' });
+  const [syncStats, setSyncStats] = useState<any>(null);
+  const [diagnosis, setDiagnosis] = useState<any>(null);
+  const [showAdvancedInfo, setShowAdvancedInfo] = useState(false);
   const isOnline = useOnlineStatus();
 
   useEffect(() => {
@@ -68,6 +80,7 @@ export default function DatosPendientes() {
     try {
       const records = await getPendingRecords();
       setPendingRecords(records);
+      await loadSyncStats(); // Cargar estadísticas junto con los registros
     } catch (error) {
       console.error('Error cargando registros pendientes:', error);
     } finally {
@@ -75,21 +88,104 @@ export default function DatosPendientes() {
     }
   };
 
-  // Función simplificada para forzar subida
-  const handleForceUpload = async () => {
-    if (!isOnline) {
-      alert('No hay conexión a internet. Por favor, conectate y vuelve a intentar.');
+  // Cargar estadísticas de sincronización
+  const loadSyncStats = async () => {
+    try {
+      const stats = await getSyncStats();
+      setSyncStats(stats);
+      
+      const diagnosisData = await advancedDiagnosis();
+      setDiagnosis(diagnosisData);
+    } catch (error) {
+      console.error('Error cargando estadísticas:', error);
+    }
+  };
+
+  // Función para limpiar registros antiguos
+  const handleCleanup = async () => {
+    if (!confirm('¿Eliminar registros sincronizados de más de 30 días y registros corruptos?\n\nEsta acción no se puede deshacer.')) {
       return;
     }
 
-    if (!confirm('¿Forzar la subida de todos los datos pendientes?')) {
+    try {
+      const result = await cleanupOldRecords(30);
+      
+      let message = `Limpieza completada:\n`;
+      message += `✓ ${result.deleted} registros eliminados\n`;
+      
+      if (result.errors.length > 0) {
+        message += `⚠ ${result.errors.length} errores durante la limpieza`;
+      }
+      
+      alert(message);
+      await loadPendingRecords(); // Recargar datos
+      
+    } catch (error) {
+      console.error('Error en limpieza:', error);
+      alert('Error durante la limpieza: ' + error);
+    }
+  };
+
+  // Sincronización inteligente (recomendada)
+  const handleSmartSync = async () => {
+    if (!isOnline) {
+      alert('No hay conexión a internet. Por favor, conéctate y vuelve a intentar.');
+      return;
+    }
+
+    if (!confirm('¿Iniciar sincronización inteligente? Esta es la opción recomendada.')) {
+      return;
+    }
+    
+    setIsSyncing(true);
+    try {
+      const result = await smartSync((current, total, status) => {
+        setSyncProgress({ current, total, status });
+      });
+      
+      let message = `Sincronización completada:\n`;
+      message += `✓ ${result.success} registros exitosos\n`;
+      if (result.failed > 0) {
+        message += `⚠ ${result.failed} registros fallidos\n`;
+      }
+      if (result.skipped > 0) {
+        message += `⏭ ${result.skipped} registros saltados\n`;
+      }
+      message += `Estrategia utilizada: ${result.strategy}`;
+      
+      alert(message);
+      
+    } catch (error) {
+      console.error('Error en sincronización inteligente:', error);
+      resetSyncState();
+      alert('Error en la sincronización: ' + error);
+    } finally {
+      setIsSyncing(false);
+      setSyncProgress({ current: 0, total: 0, status: '' });
+      await loadPendingRecords();
+      await loadSyncStats();
+    }
+  };
+
+  // Función simplificada para forzar subida (fallback)
+  const handleForceUpload = async () => {
+    if (!isOnline) {
+      alert('No hay conexión a internet. Por favor, conéctate y vuelve a intentar.');
+      return;
+    }
+
+    const message = '⚠️ Esta es la opción de emergencia.\n\n' +
+                   'Se recomienda usar "Sincronización Inteligente" primero.\n\n' +
+                   '¿Continuar con la subida forzada?';
+
+    if (!confirm(message)) {
       return;
     }
     
     setIsSyncing(true);
     try {
       const result = await forceSyncAllRecords((current, total) => {
-        setSyncProgress({ current, total });
+        setSyncProgress({ current, total, status: `Forzando ${current}/${total}` });
       });
       
       if (result.synced > 0) {
@@ -100,13 +196,13 @@ export default function DatosPendientes() {
       }
     } catch (error) {
       console.error('Error en forzar subida:', error);
-      // Resetear el estado global en caso de error
       resetSyncState();
       alert('Error al forzar la subida: ' + error);
     } finally {
       setIsSyncing(false);
-      setSyncProgress({ current: 0, total: 0 });
+      setSyncProgress({ current: 0, total: 0, status: '' });
       await loadPendingRecords();
+      await loadSyncStats();
     }
   };
 
@@ -154,7 +250,7 @@ export default function DatosPendientes() {
         {/* Header minimalista */}
         <div className="text-center mb-12">
           <h1 className="text-3xl font-light text-black mb-4">Gestión de Datos</h1>
-          <div className="flex justify-center items-center space-x-8 text-sm">
+          <div className="flex justify-center items-center space-x-8 text-sm mb-4">
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-black rounded-full"></div>
               <span className="text-black">{pendingRecords.length} registros totales</span>
@@ -170,6 +266,91 @@ export default function DatosPendientes() {
               </div>
             )}
           </div>
+          
+          {/* Estadísticas avanzadas */}
+          {syncStats && (
+            <div className="bg-gray-50 rounded-lg p-4 max-w-2xl mx-auto">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-sm font-medium text-gray-700">Análisis de Datos</h3>
+                <button
+                  onClick={() => setShowAdvancedInfo(!showAdvancedInfo)}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  {showAdvancedInfo ? 'Ocultar detalles' : 'Ver detalles'}
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 text-xs mb-4">
+                <div>
+                  <span className="text-gray-500">Tamaño total:</span>
+                  <div className="font-medium">{syncStats.totalSize}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Promedio por registro:</span>
+                  <div className="font-medium">{syncStats.avgFileSize}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Archivos grandes:</span>
+                  <div className="font-medium">{syncStats.largeFiles}</div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Sincronizados:</span>
+                  <div className="font-medium">{syncStats.synced}</div>
+                </div>
+              </div>
+
+              {/* Diagnóstico avanzado */}
+              {showAdvancedInfo && diagnosis && (
+                <div className="border-t pt-4">
+                  <div className="mb-3">
+                    <div className="text-xs font-medium text-gray-700 mb-1">
+                      Estrategia Recomendada: {diagnosis.recommendedStrategy}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      Tiempo estimado: {diagnosis.estimatedTime}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
+                    <div className="text-center">
+                      <div className="font-medium">{diagnosis.sizeBrackets.small}</div>
+                      <div className="text-gray-500">Pequeños</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="font-medium">{diagnosis.sizeBrackets.medium}</div>
+                      <div className="text-gray-500">Medianos</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="font-medium">{diagnosis.sizeBrackets.large}</div>
+                      <div className="text-gray-500">Grandes</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="font-medium text-red-600">{diagnosis.sizeBrackets.xlarge}</div>
+                      <div className="text-gray-500">XL</div>
+                    </div>
+                  </div>
+
+                  {diagnosis.risks.length > 0 && (
+                    <div className="mb-2">
+                      <div className="text-xs font-medium text-red-700 mb-1">⚠️ Advertencias:</div>
+                      {diagnosis.risks.map((risk: string, index: number) => (
+                        <div key={index} className="text-xs text-red-600">• {risk}</div>
+                      ))}
+                    </div>
+                  )}
+
+                  {diagnosis.recommendations.length > 0 && (
+                    <div>
+                      <div className="text-xs font-medium text-green-700 mb-1">💡 Recomendaciones:</div>
+                      {diagnosis.recommendations.slice(0, 3).map((rec: string, index: number) => (
+                        <div key={index} className="text-xs text-green-600">• {rec}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Estado de conexión */}
@@ -188,19 +369,39 @@ export default function DatosPendientes() {
 
         {/* Botones principales */}
         <div className="flex flex-col sm:flex-row gap-4 mb-12 justify-center">
+          {/* Sincronización Inteligente - Opción Recomendada */}
+          <button
+            onClick={handleSmartSync}
+            disabled={isSyncing || !isOnline}
+            className={`flex items-center justify-center space-x-3 px-8 py-4 border-2 border-green-600 transition-all relative ${
+              isSyncing || !isOnline 
+                ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed' 
+                : 'bg-green-600 text-white hover:bg-white hover:text-green-600'
+            }`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <span className="font-medium">{isSyncing ? 'Sincronizando...' : 'Sync Inteligente'}</span>
+            <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
+              Recomendado
+            </div>
+          </button>
+
+          {/* Forzar Subida - Opción de Emergencia */}
           <button
             onClick={handleForceUpload}
             disabled={isSyncing || !isOnline}
             className={`flex items-center justify-center space-x-3 px-8 py-4 border-2 border-black transition-all ${
               isSyncing || !isOnline 
                 ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed' 
-                : 'bg-black text-white hover:bg-white hover:text-black'
+                : 'bg-white text-black hover:bg-black hover:text-white'
             }`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
-            <span className="font-medium">{isSyncing ? 'Subiendo...' : 'Forzar Subida'}</span>
+            <span className="font-medium">Forzar Subida</span>
           </button>
 
           <button
@@ -217,20 +418,40 @@ export default function DatosPendientes() {
             </svg>
             <span className="font-medium">Descargar Datos</span>
           </button>
+
+          <button
+            onClick={handleCleanup}
+            disabled={isSyncing}
+            className={`flex items-center justify-center space-x-3 px-6 py-4 border-2 border-gray-300 transition-all ${
+              isSyncing 
+                ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed' 
+                : 'bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-400'
+            }`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            <span className="font-medium text-sm">Limpiar</span>
+          </button>
         </div>
 
         {/* Progreso de sincronización */}
         {isSyncing && (
-          <div className="mb-8">
+          <div className="mb-8 bg-gray-50 rounded-lg p-6">
             <div className="flex items-center justify-between text-sm text-black mb-2">
-              <span>Procesando registros...</span>
-              <span>{syncProgress.current} / {syncProgress.total}</span>
+              <span className="font-medium">
+                {syncProgress.status || 'Procesando registros...'}
+              </span>
+              <span className="text-gray-600">{syncProgress.current} / {syncProgress.total}</span>
             </div>
-            <div className="w-full bg-gray-200 h-1">
+            <div className="w-full bg-gray-200 h-2 rounded-full">
               <div 
-                className="bg-black h-1 transition-all duration-300"
+                className="bg-green-600 h-2 rounded-full transition-all duration-300"
                 style={{ width: `${syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}%` }}
               />
+            </div>
+            <div className="mt-2 text-xs text-gray-500 text-center">
+              Sincronización inteligente con compresión automática y control de errores
             </div>
           </div>
         )}
