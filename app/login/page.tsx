@@ -1,8 +1,11 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { authenticateUser, createUserSession } from '@/lib/users'
+
+// Variable para determinar si estamos en desarrollo
+const isDevelopment = process.env.NODE_ENV === 'development'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -10,6 +13,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showDevCredentials, setShowDevCredentials] = useState(false)
+  
+  // Solo mostrar credenciales en desarrollo y después del montaje del componente
+  useEffect(() => {
+    if (isDevelopment) {
+      setShowDevCredentials(true)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -21,8 +32,8 @@ export default function LoginPage() {
       const user = authenticateUser(email, password)
       
       if (user) {
-        // Crear sesión del usuario
-        const session = createUserSession(user)
+        // Crear sesión del usuario (para posible uso futuro)
+        createUserSession(user)
         
         // Guardar sesión en localStorage
         localStorage.setItem('isAuthenticated', 'true')
@@ -137,11 +148,11 @@ export default function LoginPage() {
           </form>
 
           {/* Divider - Solo en desarrollo */}
-          {process.env.NODE_ENV === 'development' && (
+          {showDevCredentials && (
             <div className="mt-6 pt-6 border-t border-gray-200">
               <div className="bg-gray-50 rounded-lg p-4 max-h-60 overflow-y-auto">
                 <p className="text-xs font-semibold text-gray-700 mb-2">
-                  🔐 Credenciales de prueba:
+                  🔐 Credenciales de prueba (solo visible en desarrollo):
                 </p>
                 <div className="space-y-2 text-xs text-gray-600">
                   <div className="bg-white p-2 rounded border">
