@@ -10,6 +10,8 @@ import {
   diagnoseRecords,
   getRecordById,
   resetSyncStatus,
+  initDB,
+  type PendingLuminaria,
 } from './offlineStorage';
 
 // Variable para evitar sincronizaciones concurrentes
@@ -397,6 +399,110 @@ export async function forceSyncWithRetry(
   return { success: successCount, failed: failedCount, errors };
 }
 
+// Forzar sincronización de TODOS los registros pendientes (incluso los marcados como sincronizados)
+export async function forceSyncAllRecords(
+  progressCallback?: (current: number, total: number) => void
+): Promise<{ synced: number; failed: number; errors: any[] }> {
+  console.log('🚀 Iniciando sincronización forzada de TODOS los registros...');
+  
+  if (isSyncing) {
+    throw new Error('Ya hay una sincronización en progreso');
+  }
+  
+  isSyncing = true;
+  
+  try {
+    // Obtener TODOS los registros (pendientes y sincronizados)
+    const allRecords = await getPendingRecords();
+    
+    if (allRecords.length === 0) {
+      console.log('ℹ️ No hay registros para sincronizar');
+      return { synced: 0, failed: 0, errors: [] };
+    }
+    
+    console.log(`📊 Encontrados ${allRecords.length} registros para sincronización forzada`);
+    
+    let syncedCount = 0;
+    let failedCount = 0;
+    const errors: any[] = [];
+    
+    // Procesar cada registro
+    for (let i = 0; i < allRecords.length; i++) {
+      const record = allRecords[i];
+      
+      // Actualizar progreso
+      if (progressCallback) {
+        progressCallback(i + 1, allRecords.length);
+      }
+      
+      console.log(`🔄 Procesando registro ${i + 1}/${allRecords.length} (Poste: ${record.numero_poste})`);
+      
+      try {
+        // Resetear estado si está marcado como sincronizado
+        if (record.synced && record.id) {
+          await resetSyncStatus(record.id);
+          record.synced = false;
+        }
+        
+        // Intentar sincronizar
+        const success = await syncRecord(record);
+        
+        if (success) {
+          syncedCount++;
+          if (record.id) {
+            await markAsSynced(record.id);
+          }
+          console.log(`✅ Registro ${record.id} (Poste: ${record.numero_poste}) sincronizado correctamente`);
+        } else {
+          throw new Error('La sincronización retornó false');
+        }
+        
+      } catch (error) {
+        failedCount++;
+        const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+        
+        errors.push({
+          id: record.id,
+          poste: record.numero_poste,
+          error: errorMessage,
+        });
+        
+        console.error(`❌ Error sincronizando registro ${record.id} (Poste: ${record.numero_poste}):`, errorMessage);
+        
+        // Marcar el error en el registro para referencia futura
+        if (record.id) {
+          try {
+            const updatedRecord = await getRecordById(record.id);
+            if (updatedRecord) {
+              // Actualizar directamente en IndexedDB
+              const db = await initDB();
+              updatedRecord.lastError = errorMessage;
+              updatedRecord.retryCount = (updatedRecord.retryCount || 0) + 1;
+              await db.put('pendingLuminarias', updatedRecord);
+            }
+          } catch (dbError) {
+            console.error('Error actualizando registro con error:', dbError);
+          }
+        }
+      }
+      
+      // Pequeña pausa para no sobrecargar el servidor
+      await delay(500);
+    }
+    
+    console.log(`🏁 Sincronización forzada completada: ${syncedCount} exitosos, ${failedCount} fallidos`);
+    
+    return {
+      synced: syncedCount,
+      failed: failedCount,
+      errors
+    };
+    
+  } finally {
+    isSyncing = false;
+  }
+}
+
 // Sincronizar un registro específico por ID (útil para reintentar uno solo)
 export async function syncSingleRecord(recordId: number): Promise<{
   success: boolean;
@@ -422,6 +528,3 @@ export async function syncSingleRecord(recordId: number): Promise<{
     };
   }
 }
-
-// Re-exportar diagnoseRecords para uso externo
-export { diagnoseRecords } from './offlineStorage';

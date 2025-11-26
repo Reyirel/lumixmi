@@ -1,7 +1,7 @@
 import { openDB, IDBPDatabase } from 'idb';
 
 // Tipo para los registros pendientes
-type PendingLuminaria = {
+export type PendingLuminaria = {
   id?: number;
   colonia_id: number;
   numero_poste: string;
@@ -15,6 +15,8 @@ type PendingLuminaria = {
   timestamp: number;
   synced: boolean;
   hash?: string; // Identificador único basado en los datos
+  retryCount?: number; // Número de intentos de sincronización
+  lastError?: string; // Último error de sincronización
 };
 
 const DB_NAME = 'lumixmi-offline';
@@ -372,4 +374,405 @@ export async function exportPendingRecordsAsJSON(): Promise<string> {
   }));
   
   return JSON.stringify(exportData, null, 2);
+}
+
+// Limpiar TODOS los datos (PELIGROSO - usar con precaución)
+export async function clearAllData(): Promise<void> {
+  const db = await initDB();
+  await db.clear('pendingLuminarias');
+  console.log('🗑️ Todos los datos offline han sido eliminados');
+}
+
+// Exportar datos pendientes para backup
+export async function exportPendingData(): Promise<any> {
+  const db = await initDB();
+  const allRecords = await db.getAll('pendingLuminarias');
+  
+  // Convertir blobs a base64 para poder exportar
+  const exportRecords = await Promise.all(allRecords.map(async record => {
+    try {
+      return {
+        ...record,
+        imagen_base64: await blobToBase64(record.imagen),
+        imagen_watts_base64: await blobToBase64(record.imagen_watts),
+        imagen_fotocelda_base64: await blobToBase64(record.imagen_fotocelda),
+        // Remover blobs originales del export
+        imagen: undefined,
+        imagen_watts: undefined,
+        imagen_fotocelda: undefined,
+      };
+    } catch (error) {
+      console.error('Error convirtiendo registro para export:', record.id, error);
+      return {
+        ...record,
+        imagen_base64: null,
+        imagen_watts_base64: null,
+        imagen_fotocelda_base64: null,
+        imagen: undefined,
+        imagen_watts: undefined,
+        imagen_fotocelda: undefined,
+        export_error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }));
+  
+  return {
+    version: '1.0',
+    timestamp: Date.now(),
+    count: exportRecords.length,
+    records: exportRecords
+  };
+}
+
+// Importar datos desde backup
+export async function importPendingData(data: any): Promise<void> {
+  if (!data || !data.records || !Array.isArray(data.records)) {
+    throw new Error('Formato de datos inválido');
+  }
+  
+  const db = await initDB();
+  let importedCount = 0;
+  let errorCount = 0;
+  
+  for (const record of data.records) {
+    try {
+      // Convertir base64 de vuelta a blobs
+      const importRecord: PendingLuminaria = {
+        colonia_id: record.colonia_id,
+        numero_poste: record.numero_poste,
+        watts: record.watts,
+        latitud: record.latitud,
+        longitud: record.longitud,
+        fotocelda_nueva: record.fotocelda_nueva,
+        timestamp: record.timestamp || Date.now(),
+        synced: false, // Forzar como no sincronizado al importar
+        imagen: record.imagen_base64 ? base64ToBlob(record.imagen_base64) : new Blob(),
+        imagen_watts: record.imagen_watts_base64 ? base64ToBlob(record.imagen_watts_base64) : new Blob(),
+        imagen_fotocelda: record.imagen_fotocelda_base64 ? base64ToBlob(record.imagen_fotocelda_base64) : new Blob(),
+      };
+      
+      // Verificar si ya existe un registro similar
+      const exists = await existsSimilarPendingRecord(importRecord);
+      if (!exists) {
+        await db.add('pendingLuminarias', importRecord);
+        importedCount++;
+      }
+    } catch (error) {
+      console.error('Error importando registro:', error);
+      errorCount++;
+    }
+  }
+  
+  console.log(`📥 Importación completada: ${importedCount} importados, ${errorCount} errores`);
+}
+
+// Función auxiliar para convertir Blob a base64
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(',')[1]); // Remover el prefijo "data:..."
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// Función auxiliar para convertir base64 a Blob
+function base64ToBlob(base64: string, mimeType: string = 'image/jpeg'): Blob {
+  const byteCharacters = atob(base64);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type: mimeType });
+}
+
+// Función para limpiar registros duplicados basándose en hash
+export async function cleanDuplicateRecords(): Promise<{ removed: number; kept: number }> {
+  const db = await initDB();
+  const allRecords = await db.getAll('pendingLuminarias');
+  
+  const hashMap = new Map<string, PendingLuminaria[]>();
+  
+  // Agrupar registros por hash
+  for (const record of allRecords) {
+    const hash = generateRecordHash({
+      colonia_id: record.colonia_id,
+      numero_poste: record.numero_poste,
+      watts: record.watts,
+      latitud: record.latitud,
+      longitud: record.longitud,
+    });
+    
+    if (!hashMap.has(hash)) {
+      hashMap.set(hash, []);
+    }
+    hashMap.get(hash)!.push(record);
+  }
+  
+  let removedCount = 0;
+  let keptCount = 0;
+  
+  // Para cada grupo de duplicados, mantener solo el más reciente y no sincronizado
+  for (const [hash, records] of hashMap) {
+    if (records.length > 1) {
+      // Ordenar por timestamp descendente (más reciente primero)
+      records.sort((a, b) => b.timestamp - a.timestamp);
+      
+      // Encontrar el mejor registro para mantener (preferir no sincronizados)
+      let recordToKeep = records.find(r => !r.synced) || records[0];
+      
+      // Eliminar todos los demás
+      for (const record of records) {
+        if (record.id && record.id !== recordToKeep.id) {
+          await db.delete('pendingLuminarias', record.id);
+          removedCount++;
+        }
+      }
+      keptCount++;
+    } else {
+      keptCount++;
+    }
+  }
+  
+  console.log(`🧹 Limpieza de duplicados completada: ${removedCount} eliminados, ${keptCount} mantenidos`);
+  return { removed: removedCount, kept: keptCount };
+}
+
+// Función para limpiar registros corruptos (sin imágenes válidas)
+export async function cleanCorruptedRecords(): Promise<{ removed: number; errors: string[] }> {
+  const db = await initDB();
+  const allRecords = await db.getAll('pendingLuminarias');
+  
+  let removedCount = 0;
+  const errors: string[] = [];
+  
+  for (const record of allRecords) {
+    let isCorrupted = false;
+    const issues: string[] = [];
+    
+    // Verificar imágenes
+    if (!record.imagen || !(record.imagen instanceof Blob) || record.imagen.size === 0) {
+      issues.push('imagen principal faltante o corrupta');
+      isCorrupted = true;
+    }
+    
+    if (!record.imagen_watts || !(record.imagen_watts instanceof Blob) || record.imagen_watts.size === 0) {
+      issues.push('imagen de watts faltante o corrupta');
+      isCorrupted = true;
+    }
+    
+    if (!record.imagen_fotocelda || !(record.imagen_fotocelda instanceof Blob) || record.imagen_fotocelda.size === 0) {
+      issues.push('imagen de fotocelda faltante o corrupta');
+      isCorrupted = true;
+    }
+    
+    // Verificar datos básicos
+    if (!record.numero_poste || record.numero_poste.trim() === '') {
+      issues.push('número de poste faltante');
+      isCorrupted = true;
+    }
+    
+    if (!record.colonia_id || record.colonia_id <= 0) {
+      issues.push('ID de colonia inválido');
+      isCorrupted = true;
+    }
+    
+    if (isCorrupted && record.id) {
+      console.warn(`🗑️ Eliminando registro corrupto ${record.id} (Poste: ${record.numero_poste}): ${issues.join(', ')}`);
+      await db.delete('pendingLuminarias', record.id);
+      removedCount++;
+      errors.push(`Registro ${record.id}: ${issues.join(', ')}`);
+    }
+  }
+  
+  console.log(`🧹 Limpieza de registros corruptos completada: ${removedCount} eliminados`);
+  return { removed: removedCount, errors };
+}
+
+// Función para optimizar el almacenamiento (comprimir imágenes grandes)
+export async function optimizeStorage(): Promise<{ 
+  optimized: number; 
+  spaceSaved: number; 
+  errors: string[] 
+}> {
+  const db = await initDB();
+  const allRecords = await db.getAll('pendingLuminarias');
+  
+  let optimizedCount = 0;
+  let spaceSaved = 0;
+  const errors: string[] = [];
+  
+  for (const record of allRecords) {
+    if (!record.id) continue;
+    
+    try {
+      let updated = false;
+      const originalSize = (record.imagen?.size || 0) + (record.imagen_watts?.size || 0) + (record.imagen_fotocelda?.size || 0);
+      
+      // Optimizar solo imágenes muy grandes (> 5MB)
+      const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+      
+      if (record.imagen && record.imagen.size > MAX_SIZE) {
+        const optimized = await compressImage(record.imagen, 0.8);
+        if (optimized.size < record.imagen.size) {
+          record.imagen = optimized;
+          updated = true;
+        }
+      }
+      
+      if (record.imagen_watts && record.imagen_watts.size > MAX_SIZE) {
+        const optimized = await compressImage(record.imagen_watts, 0.8);
+        if (optimized.size < record.imagen_watts.size) {
+          record.imagen_watts = optimized;
+          updated = true;
+        }
+      }
+      
+      if (record.imagen_fotocelda && record.imagen_fotocelda.size > MAX_SIZE) {
+        const optimized = await compressImage(record.imagen_fotocelda, 0.8);
+        if (optimized.size < record.imagen_fotocelda.size) {
+          record.imagen_fotocelda = optimized;
+          updated = true;
+        }
+      }
+      
+      if (updated) {
+        await db.put('pendingLuminarias', record);
+        const newSize = (record.imagen?.size || 0) + (record.imagen_watts?.size || 0) + (record.imagen_fotocelda?.size || 0);
+        spaceSaved += originalSize - newSize;
+        optimizedCount++;
+      }
+      
+    } catch (error) {
+      const errorMsg = `Error optimizando registro ${record.id}: ${error instanceof Error ? error.message : String(error)}`;
+      console.error(errorMsg);
+      errors.push(errorMsg);
+    }
+  }
+  
+  console.log(`🚀 Optimización completada: ${optimizedCount} registros optimizados, ${(spaceSaved / 1024 / 1024).toFixed(2)}MB ahorrados`);
+  return { optimized: optimizedCount, spaceSaved, errors };
+}
+
+// Función auxiliar para comprimir imágenes
+async function compressImage(blob: Blob, quality: number = 0.8): Promise<Blob> {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    const img = new Image();
+    
+    img.onload = () => {
+      // Calcular nuevo tamaño manteniendo aspect ratio
+      const MAX_WIDTH = 1920;
+      const MAX_HEIGHT = 1080;
+      
+      let { width, height } = img;
+      if (width > height) {
+        if (width > MAX_WIDTH) {
+          height = (height * MAX_WIDTH) / width;
+          width = MAX_WIDTH;
+        }
+      } else {
+        if (height > MAX_HEIGHT) {
+          width = (width * MAX_HEIGHT) / height;
+          height = MAX_HEIGHT;
+        }
+      }
+      
+      canvas.width = width;
+      canvas.height = height;
+      
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      canvas.toBlob((compressedBlob) => {
+        resolve(compressedBlob || blob);
+      }, 'image/jpeg', quality);
+    };
+    
+    img.onerror = () => resolve(blob);
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+// Función para obtener estadísticas de almacenamiento
+export async function getStorageStats(): Promise<{
+  totalRecords: number;
+  totalSize: number;
+  pendingRecords: number;
+  syncedRecords: number;
+  corruptedRecords: number;
+  duplicateGroups: number;
+  estimatedQuotaUsage?: number;
+}> {
+  const db = await initDB();
+  const allRecords = await db.getAll('pendingLuminarias');
+  
+  let totalSize = 0;
+  let pendingRecords = 0;
+  let syncedRecords = 0;
+  let corruptedRecords = 0;
+  
+  const hashMap = new Map<string, number>();
+  
+  for (const record of allRecords) {
+    // Calcular tamaño
+    totalSize += (record.imagen?.size || 0) + (record.imagen_watts?.size || 0) + (record.imagen_fotocelda?.size || 0);
+    
+    // Contar estados
+    if (record.synced) {
+      syncedRecords++;
+    } else {
+      pendingRecords++;
+    }
+    
+    // Detectar corruptos
+    const hasValidImages = 
+      record.imagen instanceof Blob && record.imagen.size > 0 &&
+      record.imagen_watts instanceof Blob && record.imagen_watts.size > 0 &&
+      record.imagen_fotocelda instanceof Blob && record.imagen_fotocelda.size > 0;
+    
+    if (!hasValidImages) {
+      corruptedRecords++;
+    }
+    
+    // Detectar duplicados
+    const hash = generateRecordHash({
+      colonia_id: record.colonia_id,
+      numero_poste: record.numero_poste,
+      watts: record.watts,
+      latitud: record.latitud,
+      longitud: record.longitud,
+    });
+    
+    hashMap.set(hash, (hashMap.get(hash) || 0) + 1);
+  }
+  
+  const duplicateGroups = Array.from(hashMap.values()).filter(count => count > 1).length;
+  
+  // Intentar obtener uso de cuota del navegador
+  let estimatedQuotaUsage: number | undefined;
+  if ('storage' in navigator && 'estimate' in navigator.storage) {
+    try {
+      const estimate = await navigator.storage.estimate();
+      if (estimate.usage && estimate.quota) {
+        estimatedQuotaUsage = (estimate.usage / estimate.quota) * 100;
+      }
+    } catch (error) {
+      console.warn('No se pudo obtener información de cuota de almacenamiento:', error);
+    }
+  }
+  
+  return {
+    totalRecords: allRecords.length,
+    totalSize,
+    pendingRecords,
+    syncedRecords,
+    corruptedRecords,
+    duplicateGroups,
+    estimatedQuotaUsage,
+  };
 }
