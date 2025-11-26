@@ -23,10 +23,49 @@ export default function DatosPendientes() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0, status: '' });
-  const [syncStats, setSyncStats] = useState<any>(null);
-  const [diagnosis, setDiagnosis] = useState<any>(null);
+  const [syncStats, setSyncStats] = useState<{
+    total: number;
+    pending: number;
+    synced: number;
+    failed: number;
+    totalSize: string;
+    avgFileSize: string;
+    largeFiles: number;
+  } | null>(null);
+  const [diagnosis, setDiagnosis] = useState<{
+    summary: {
+      totalRecords: number;
+      pendingRecords: number;
+      syncedRecords: number;
+      errorRecords: number;
+      totalSizeMB: number;
+      avgSizeMB: number;
+    };
+    sizeBrackets: {
+      small: number;
+      medium: number;
+      large: number;
+      xlarge: number;
+    };
+    recommendedStrategy: string;
+    estimatedTime: string;
+    risks: string[];
+    recommendations: string[];
+  } | null>(null);
   const [showAdvancedInfo, setShowAdvancedInfo] = useState(false);
   const isOnline = useOnlineStatus();
+
+  const loadPendingRecords = async () => {
+    try {
+      const records = await getPendingRecords();
+      setPendingRecords(records);
+      await loadSyncStats(); // Cargar estadísticas junto con los registros
+    } catch (error) {
+      console.error('Error cargando registros pendientes:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -75,18 +114,6 @@ export default function DatosPendientes() {
       return () => clearTimeout(timer);
     }
   }, [isOnline, pendingRecords.length]);
-
-  const loadPendingRecords = async () => {
-    try {
-      const records = await getPendingRecords();
-      setPendingRecords(records);
-      await loadSyncStats(); // Cargar estadísticas junto con los registros
-    } catch (error) {
-      console.error('Error cargando registros pendientes:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // Cargar estadísticas de sincronización
   const loadSyncStats = async () => {

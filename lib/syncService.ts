@@ -46,7 +46,7 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY = 2000;
 const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB por archivo (límite seguro para Vercel)
 const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB por chunk
-const MAX_CONCURRENT_UPLOADS = 2; // Máximo 2 uploads concurrentes
+// const MAX_CONCURRENT_UPLOADS = 2; // Máximo 2 uploads concurrentes (reservado para uso futuro)
 const RECORDS_PER_BATCH = 3; // Procesar máximo 3 registros por lote
 
 // Función auxiliar para esperar
@@ -872,7 +872,7 @@ export async function autoRecoverySync(): Promise<{
             totalSynced++;
             console.log(`✅ Recovery completo para poste ${record.numero_poste}`);
             continue;
-          } catch (error) {
+          } catch {
             console.warn(`⚠️ Falló sync completo para poste ${record.numero_poste}, intentando datos básicos...`);
           }
         }

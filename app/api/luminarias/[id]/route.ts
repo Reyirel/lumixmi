@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase, supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 
 // GET: Obtener una luminaria específica por ID
 export async function GET(
@@ -236,7 +236,7 @@ export async function DELETE(
     }
 
     // Eliminar SOLO el registro de la tabla luminarias (no toca colonias)
-    const { error, count } = await supabase
+    const { error } = await supabase
       .from('luminarias')
       .delete()
       .eq('id', id)

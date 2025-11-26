@@ -89,10 +89,9 @@ export async function POST(request: NextRequest) {
 
       // Subir el archivo reconstruido
       const timestamp = Date.now()
-      const fileExtension = fileName.split('.').pop() || 'bin'
       const finalFileName = `${timestamp}-${fileName}`
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('luminarias')
         .upload(finalFileName, reconstructedFile, {
           cacheControl: '3600',
@@ -153,7 +152,7 @@ export async function POST(request: NextRequest) {
           if (chunkPath) {
             await supabase.storage.from('luminarias').remove([chunkPath])
           }
-        } catch (cleanupError) {
+        } catch {
           // Ignorar errores de limpieza
         }
       }
