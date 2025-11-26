@@ -197,6 +197,12 @@ export default function AdminPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
+  // Estados para selección múltiple y eliminación en lote
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedLuminarias, setSelectedLuminarias] = useState<Set<number>>(new Set())
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+
   // Función para verificar si una URL de imagen es válida
   const isValidImageUrl = (url: string | null | undefined): boolean => {
     if (!url) return false
@@ -321,6 +327,94 @@ export default function AdminPage() {
     setIsEditing(false)
     setEditFormData({})
     setShowDeleteConfirm(false)
+    setSelectionMode(false)
+    setSelectedLuminarias(new Set())
+    setShowBulkDeleteConfirm(false)
+  }
+
+  // Función para toggle de selección de luminaria
+  const toggleLuminariaSelection = (lumId: number) => {
+    setSelectedLuminarias(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(lumId)) {
+        newSet.delete(lumId)
+      } else {
+        newSet.add(lumId)
+      }
+      return newSet
+    })
+  }
+
+  // Función para seleccionar/deseleccionar todas las luminarias visibles
+  const toggleSelectAll = (luminariasToSelect: Luminaria[]) => {
+    const allSelected = luminariasToSelect.every(l => selectedLuminarias.has(l.id))
+    if (allSelected) {
+      // Deseleccionar todas
+      setSelectedLuminarias(prev => {
+        const newSet = new Set(prev)
+        luminariasToSelect.forEach(l => newSet.delete(l.id))
+        return newSet
+      })
+    } else {
+      // Seleccionar todas
+      setSelectedLuminarias(prev => {
+        const newSet = new Set(prev)
+        luminariasToSelect.forEach(l => newSet.add(l.id))
+        return newSet
+      })
+    }
+  }
+
+  // Función para eliminar múltiples luminarias
+  const handleBulkDelete = async () => {
+    if (selectedLuminarias.size === 0) return
+
+    setIsBulkDeleting(true)
+    const idsToDelete = Array.from(selectedLuminarias)
+    let successCount = 0
+    let errorCount = 0
+
+    try {
+      for (const id of idsToDelete) {
+        try {
+          const response = await fetch(`/api/luminarias/${id}`, {
+            method: 'DELETE',
+            headers: {
+              'X-Admin-Token': 'authenticated'
+            }
+          })
+
+          if (response.ok) {
+            successCount++
+          } else {
+            errorCount++
+          }
+        } catch {
+          errorCount++
+        }
+      }
+
+      // Actualizar la lista local
+      setLuminarias(prev => prev.filter(l => !selectedLuminarias.has(l.id)))
+      
+      // Limpiar selección
+      setSelectedLuminarias(new Set())
+      setShowBulkDeleteConfirm(false)
+      setSelectionMode(false)
+
+      if (errorCount === 0) {
+        showNotification('success', 'Luminarias eliminadas', 
+          `Se eliminaron ${successCount} luminaria(s) correctamente`, 3000)
+      } else {
+        showNotification('warning', 'Eliminación parcial', 
+          `Se eliminaron ${successCount} luminaria(s), ${errorCount} fallaron`, 5000)
+      }
+    } catch (error) {
+      showNotification('error', 'Error al eliminar', 
+        error instanceof Error ? error.message : 'Error desconocido')
+    } finally {
+      setIsBulkDeleting(false)
+    }
   }
 
   // Función para iniciar la edición
@@ -810,16 +904,46 @@ export default function AdminPage() {
                   </div>
 
                   {/* Expanded Watt List */}
-                  {expandedWatt && (
+                  {expandedWatt && (() => {
+                    const currentLuminarias = sortLuminarias(wattGroups.find(g => g.watts === expandedWatt)?.luminarias || [])
+                    const allCurrentSelected = currentLuminarias.length > 0 && currentLuminarias.every(l => selectedLuminarias.has(l.id))
+                    
+                    return (
                     <div className="animate-fadeIn">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
                         <h3 className="text-lg font-bold text-gray-900 flex items-center">
                           <span className="inline-block w-2 h-2 bg-black rounded-full mr-2"></span>
                           Lámparas de {expandedWatt}W
+                          {selectionMode && selectedLuminarias.size > 0 && (
+                            <span className="ml-2 text-sm font-normal text-blue-600">
+                              ({selectedLuminarias.size} seleccionada{selectedLuminarias.size !== 1 && 's'})
+                            </span>
+                          )}
                         </h3>
                         
-                        {/* Controles de ordenamiento */}
+                        {/* Controles de ordenamiento y selección */}
                         <div className="flex flex-wrap items-center gap-2">
+                          {/* Botón modo selección */}
+                          <button
+                            onClick={() => {
+                              setSelectionMode(!selectionMode)
+                              if (selectionMode) {
+                                setSelectedLuminarias(new Set())
+                              }
+                            }}
+                            className={`flex items-center gap-1 px-3 py-1.5 text-sm border rounded-lg transition-colors ${
+                              selectionMode 
+                                ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                            }`}
+                            title={selectionMode ? 'Cancelar selección' : 'Seleccionar varias'}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
+                            <span className="hidden sm:inline">{selectionMode ? 'Cancelar' : 'Seleccionar'}</span>
+                          </button>
+                          
                           <span className="text-sm text-gray-600">Ordenar por:</span>
                           <select
                             value={sortField}
@@ -856,21 +980,89 @@ export default function AdminPage() {
                         </div>
                       </div>
                       
+                      {/* Barra de acciones para selección múltiple */}
+                      {selectionMode && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => toggleSelectAll(currentLuminarias)}
+                              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white border border-blue-300 rounded-lg text-blue-700 hover:bg-blue-50 transition-colors"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={allCurrentSelected}
+                                onChange={() => toggleSelectAll(currentLuminarias)}
+                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                              <span>{allCurrentSelected ? 'Deseleccionar todas' : 'Seleccionar todas'}</span>
+                            </button>
+                            <span className="text-sm text-blue-700">
+                              {selectedLuminarias.size} de {currentLuminarias.length} seleccionadas
+                            </span>
+                          </div>
+                          {selectedLuminarias.size > 0 && (
+                            <button
+                              onClick={() => setShowBulkDeleteConfirm(true)}
+                              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              Eliminar seleccionadas ({selectedLuminarias.size})
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      
                       <div className="space-y-3">
-                        {sortLuminarias(wattGroups.find(g => g.watts === expandedWatt)?.luminarias || []).map(lum => (
+                        {currentLuminarias.map(lum => (
                           <div
                             key={lum.id}
-                            onClick={() => setSelectedLuminaria(lum)}
-                            className="bg-white border border-gray-200 rounded-lg p-4 cursor-pointer hover:border-black hover:shadow-md transition-all group"
+                            onClick={() => {
+                              if (selectionMode) {
+                                toggleLuminariaSelection(lum.id)
+                              } else {
+                                setSelectedLuminaria(lum)
+                              }
+                            }}
+                            className={`bg-white border rounded-lg p-4 cursor-pointer transition-all group ${
+                              selectionMode && selectedLuminarias.has(lum.id)
+                                ? 'border-blue-500 bg-blue-50 shadow-md'
+                                : 'border-gray-200 hover:border-black hover:shadow-md'
+                            }`}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex-1">
                                 <div className="flex items-center space-x-3">
-                                  <div className="flex items-center justify-center w-10 h-10 bg-gray-100 rounded-lg group-hover:bg-black group-hover:text-white transition-colors">
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                                    </svg>
-                                  </div>
+                                  {selectionMode ? (
+                                    <div 
+                                      className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
+                                        selectedLuminarias.has(lum.id)
+                                          ? 'bg-blue-500 text-white'
+                                          : 'bg-gray-100'
+                                      }`}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        toggleLuminariaSelection(lum.id)
+                                      }}
+                                    >
+                                      {selectedLuminarias.has(lum.id) ? (
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      ) : (
+                                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                        </svg>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-center w-10 h-10 bg-gray-100 rounded-lg group-hover:bg-black group-hover:text-white transition-colors">
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                      </svg>
+                                    </div>
+                                  )}
                                   <div>
                                     <p className="font-semibold text-gray-900">Poste: {lum.numero_poste}</p>
                                     <p className="text-sm text-gray-600">
@@ -879,15 +1071,18 @@ export default function AdminPage() {
                                   </div>
                                 </div>
                               </div>
-                              <svg className="w-5 h-5 text-gray-400 group-hover:text-black transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
+                              {!selectionMode && (
+                                <svg className="w-5 h-5 text-gray-400 group-hover:text-black transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              )}
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
-                  )}
+                    )
+                  })()}
                 </>
               )}
             </div>
@@ -895,6 +1090,98 @@ export default function AdminPage() {
         </div>
         )
       })()}
+
+      {/* Modal de confirmación para eliminación en lote */}
+      {showBulkDeleteConfirm && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4 animate-fadeIn"
+          onClick={() => setShowBulkDeleteConfirm(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-5 bg-red-600 text-white">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Confirmar eliminación múltiple
+              </h2>
+            </div>
+            <div className="p-6">
+              <div className="mb-6">
+                <p className="text-gray-700 mb-4">
+                  ¿Estás seguro de que deseas eliminar <strong className="text-red-600">{selectedLuminarias.size} luminaria{selectedLuminarias.size !== 1 && 's'}</strong>?
+                </p>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm text-red-800 font-medium">Esta acción no se puede deshacer</p>
+                      <p className="text-sm text-red-700 mt-1">
+                        Se eliminarán permanentemente todas las luminarias seleccionadas junto con sus imágenes y datos asociados.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Lista de luminarias a eliminar */}
+                <div className="mt-4 max-h-48 overflow-y-auto border border-gray-200 rounded-lg">
+                  <div className="p-3 bg-gray-50 border-b border-gray-200 sticky top-0">
+                    <p className="text-sm font-medium text-gray-700">Luminarias seleccionadas:</p>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {Array.from(selectedLuminarias).map(id => {
+                      const lum = luminarias.find(l => l.id === id)
+                      return lum ? (
+                        <div key={id} className="px-3 py-2 text-sm text-gray-600 flex justify-between">
+                          <span>Poste: <strong>{lum.numero_poste}</strong></span>
+                          <span className="text-gray-400">{lum.watts}W</span>
+                        </div>
+                      ) : null
+                    })}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={isBulkDeleting}
+                  className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isBulkDeleting ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Eliminando...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Sí, eliminar {selectedLuminarias.size} luminaria{selectedLuminarias.size !== 1 && 's'}
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowBulkDeleteConfirm(false)}
+                  disabled={isBulkDeleting}
+                  className="px-4 py-3 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300 transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Detalle Luminaria */}
       {selectedLuminaria && (
