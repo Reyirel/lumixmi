@@ -72,7 +72,8 @@ export const USERS: User[] = [
       'LA HUERTA CAPULA',
       'LA LOMA DE LA CRUZ',
       'PUERTO BANGANDHO',
-      'SAN PEDRO CAPULA'
+      'SAN PEDRO CAPULA',
+      'COL. GRAL. FELIPE ANGELES',
     ]
   },
   // ARTURO
@@ -174,7 +175,6 @@ export const USERS: User[] = [
     role: 'encargado',
     comunidades: [
       'CANTAMAYE',
-      'COL. GRAL. FELIPE ANGELES',
       'EL DEXTHI SAN JUANICO',
       'EL DURAZNO',
       'LA HEREDAD',
