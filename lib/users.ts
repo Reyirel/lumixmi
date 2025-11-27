@@ -44,7 +44,7 @@ export const USERS: User[] = [
       'EL TAXTHO',
       'LOPEZ FLORES',
       'NEQUETEJE',
-      'QUIXPEDHE'
+      'QUIXPEDHE',
     ]
   },
   // MARCO
