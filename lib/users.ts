@@ -183,6 +183,7 @@ export const USERS: User[] = [
       'SAN JUANICO',
       'USTHEJE',
       'LA PALMA',
+      'EL BOJAY'
     ]
   },
   // CASTELLANOS
