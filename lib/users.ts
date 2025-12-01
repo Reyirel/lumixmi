@@ -206,7 +206,7 @@ export const USERS: User[] = [
       'LOMA CENTRO JULIAN VILLAGRAN',
       'MAGUEY BLANCO',
       'PUEBLO NUEVO',
-      'TAXOHO'
+      'TAXADHO'
     ]
   },
   // DIEGO
