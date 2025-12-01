@@ -591,11 +591,33 @@ export default function AdminPage() {
   })
 
   const totalLuminarias = userLuminarias.length
+  
+  // Calcular total de lámparas excedidas por comunidad
+  const calcularLamparasExcedidas = (): number => {
+    let totalExcedidas = 0
+    userFilteredColonias.forEach(colonia => {
+      const lumCount = getLuminariasForColonia(colonia.id).length
+      const meta = getMetaForColonia(colonia.nombre)
+      if (meta && lumCount > meta) {
+        totalExcedidas += (lumCount - meta)
+      }
+    })
+    return totalExcedidas
+  }
+  
+  // Calcular estadísticas de fotoceldas
+  const fotoceldaNuevaCount = userLuminarias.filter(l => l.fotocelda_nueva === true).length
+  const fotoceldaViejaCount = userLuminarias.filter(l => l.fotocelda_nueva === false).length
+  const lamparasExcedidasTotal = calcularLamparasExcedidas()
+  
   const stats = {
     total: totalLuminarias,
     watts25: userLuminarias.filter(l => l.watts === 25).length,
     watts40: userLuminarias.filter(l => l.watts === 40).length,
     watts80: userLuminarias.filter(l => l.watts === 80).length,
+    lamparasExcedidas: lamparasExcedidasTotal,
+    fotoceldaNueva: fotoceldaNuevaCount,
+    fotoceldaVieja: fotoceldaViejaCount,
   }
 
 
@@ -685,7 +707,7 @@ export default function AdminPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-4 sm:mb-6">
           <StatCard 
             title="Total Luminarias" 
             value={stats.total} 
@@ -713,6 +735,40 @@ export default function AdminPage() {
             value={stats.watts80} 
             icon={<span className="text-lg sm:text-xl font-bold">80W</span>}
             color="bg-orange-600"
+          />
+        </div>
+        
+        {/* Stats Cards - Fila adicional */}
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 mb-6 sm:mb-8">
+          <StatCard 
+            title="Lámparas Excedidas" 
+            value={stats.lamparasExcedidas} 
+            icon={
+              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            }
+            color="bg-red-600"
+          />
+          <StatCard 
+            title="Fotocelda Nueva" 
+            value={stats.fotoceldaNueva} 
+            icon={
+              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+            color="bg-emerald-600"
+          />
+          <StatCard 
+            title="Fotocelda Existente" 
+            value={stats.fotoceldaVieja} 
+            icon={
+              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+            color="bg-amber-600"
           />
         </div>
 
