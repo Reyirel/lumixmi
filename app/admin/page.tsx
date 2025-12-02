@@ -615,7 +615,7 @@ export default function AdminPage() {
   // También agrupa colonias unificadas para mostrar solo una entrada
   const userFilteredColonias = (() => {
     // Primero filtrar por permisos del usuario
-    let filtered = colonias.filter(c => {
+    const filtered = colonias.filter(c => {
       if (!currentUser) return true // Si no hay usuario, mostrar todas (fallback)
       if (currentUser.role === 'admin' || currentUser.comunidades.length === 0) return true
       
