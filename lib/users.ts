@@ -138,6 +138,7 @@ export const USERS: User[] = [
       'EL MANDHO',
       'EL ORO',
       'IGNACIO LÓPEZ RAYÓN',
+      'LÓPEZ RAYÓN', // Nombre unificado
       'LA LOMA DEL ORO',
       'LA LOMA LÓPEZ RAYÓN',
       'LA MEDIA LUNA',

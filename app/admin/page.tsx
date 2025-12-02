@@ -11,6 +11,42 @@ type Colonia = {
   created_at: string
 }
 
+// Configuración para unificar colonias que deben mostrarse como una sola
+// El key es el nombre que se mostrará, el value es un array con los nombres a unificar
+const COLONIAS_UNIFICADAS: { [nombreUnificado: string]: string[] } = {
+  "López Rayón": ["López Rayón", "Ignacio López Rayón", "Ignacio Lopez Rayon", "Lopez Rayon"]
+}
+
+// Función para obtener el nombre unificado de una colonia
+const getNombreUnificado = (nombre: string): string => {
+  const nombreNormalizado = nombre.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim()
+  
+  for (const [nombreUnificado, variantes] of Object.entries(COLONIAS_UNIFICADAS)) {
+    const variantesNormalizadas = variantes.map(v => 
+      v.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim()
+    )
+    if (variantesNormalizadas.includes(nombreNormalizado)) {
+      return nombreUnificado
+    }
+  }
+  return nombre
+}
+
+// Función para verificar si una colonia debe ser agrupada con otra
+const esColoniaUnificada = (nombre: string): boolean => {
+  const nombreNormalizado = nombre.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim()
+  
+  for (const variantes of Object.values(COLONIAS_UNIFICADAS)) {
+    const variantesNormalizadas = variantes.map(v => 
+      v.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim()
+    )
+    if (variantesNormalizadas.includes(nombreNormalizado)) {
+      return true
+    }
+  }
+  return false
+}
+
 type Luminaria = {
   id: number
   colonia_id: number | null
@@ -45,6 +81,7 @@ const METAS_LAMPARAS: { [key: string]: number } = {
   "La Loma López Rayón": 63,
   "La Mesa López Rayón": 27,
   "Ignacio López Rayón": 113,
+  "López Rayón": 113, // Meta unificada para López Rayón (usando la meta de Ignacio López Rayón)
   "El Dextli Alberto": 28,
   "El Dextho": 108,
   "El Mandho": 179,
@@ -300,8 +337,24 @@ export default function AdminPage() {
     router.push('/login')
   }
 
+  // Obtener los IDs de colonias que deben agruparse con una colonia dada
+  const getColoniaIdsUnificados = (coloniaId: number): number[] => {
+    const colonia = colonias.find(c => c.id === coloniaId)
+    if (!colonia) return [coloniaId]
+    
+    const nombreUnificado = getNombreUnificado(colonia.nombre)
+    
+    // Buscar todas las colonias que tienen el mismo nombre unificado
+    const idsUnificados = colonias
+      .filter(c => getNombreUnificado(c.nombre) === nombreUnificado)
+      .map(c => c.id)
+    
+    return idsUnificados.length > 0 ? idsUnificados : [coloniaId]
+  }
+
   const getLuminariasForColonia = (coloniaId: number): Luminaria[] => {
-    return luminarias.filter(l => l.colonia_id === coloniaId)
+    const idsUnificados = getColoniaIdsUnificados(coloniaId)
+    return luminarias.filter(l => l.colonia_id !== null && idsUnificados.includes(l.colonia_id))
   }
 
   const getWattGroups = (coloniaLuminarias: Luminaria[]): WattGroup[] => {
@@ -559,16 +612,46 @@ export default function AdminPage() {
 
   // Filtrar colonias según el usuario actual
   // Admin ve todas, encargados solo ven sus comunidades asignadas
-  const userFilteredColonias = colonias.filter(c => {
-    if (!currentUser) return true // Si no hay usuario, mostrar todas (fallback)
-    if (currentUser.role === 'admin' || currentUser.comunidades.length === 0) return true
+  // También agrupa colonias unificadas para mostrar solo una entrada
+  const userFilteredColonias = (() => {
+    // Primero filtrar por permisos del usuario
+    let filtered = colonias.filter(c => {
+      if (!currentUser) return true // Si no hay usuario, mostrar todas (fallback)
+      if (currentUser.role === 'admin' || currentUser.comunidades.length === 0) return true
+      
+      // Normalizar y comparar nombres
+      const normalizedColoniaName = normalizeColoniaName(c.nombre)
+      return currentUser.comunidades.some(userColonia => 
+        normalizeColoniaName(userColonia) === normalizedColoniaName
+      )
+    })
     
-    // Normalizar y comparar nombres
-    const normalizedColoniaName = normalizeColoniaName(c.nombre)
-    return currentUser.comunidades.some(userColonia => 
-      normalizeColoniaName(userColonia) === normalizedColoniaName
-    )
-  })
+    // Ahora agrupar colonias unificadas (mostrar solo la primera de cada grupo)
+    const nombresUnificadosVistos = new Set<string>()
+    const coloniasAgrupadas: Colonia[] = []
+    
+    for (const colonia of filtered) {
+      const nombreUnificado = getNombreUnificado(colonia.nombre)
+      
+      if (esColoniaUnificada(colonia.nombre)) {
+        // Si es una colonia unificada y ya vimos este grupo, saltar
+        if (nombresUnificadosVistos.has(nombreUnificado)) {
+          continue
+        }
+        // Marcar como vista y agregar con el nombre unificado
+        nombresUnificadosVistos.add(nombreUnificado)
+        coloniasAgrupadas.push({
+          ...colonia,
+          nombre: nombreUnificado // Usar el nombre unificado para mostrar
+        })
+      } else {
+        // Colonia normal, agregar tal cual
+        coloniasAgrupadas.push(colonia)
+      }
+    }
+    
+    return coloniasAgrupadas
+  })()
 
   // Aplicar filtro de búsqueda sobre las colonias del usuario
   const filteredColonias = userFilteredColonias.filter(c => 
