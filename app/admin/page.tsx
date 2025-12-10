@@ -1760,19 +1760,223 @@ export default function AdminPage() {
                 />
               </div>
 
-              {/* Action Button */}
-              <a
-                href={`https://www.google.com/maps?q=${selectedLuminaria.latitud},${selectedLuminaria.longitud}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-6 w-full inline-flex items-center justify-center px-6 py-3 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 transition-all transform hover:scale-[1.02]"
-              >
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Ver en Google Maps
-              </a>
+              {/* Action Buttons */}
+              <div className="mt-6 flex flex-col sm:flex-row gap-3">
+                <a
+                  href={`https://www.google.com/maps?q=${selectedLuminaria.latitud},${selectedLuminaria.longitud}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 inline-flex items-center justify-center px-6 py-3 bg-black text-white rounded-lg font-semibold hover:bg-gray-800 transition-all transform hover:scale-[1.02]"
+                >
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Ver en Google Maps
+                </a>
+                <button
+                  onClick={() => {
+                    // Encontrar el nombre de la colonia
+                    const colonia = colonias.find(c => c.id === selectedLuminaria.colonia_id)
+                    const coloniaName = colonia?.nombre || 'Sin comunidad'
+                    
+                    // Crear ventana de impresión
+                    const printWindow = window.open('', '_blank')
+                    if (printWindow) {
+                      printWindow.document.write(`
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                          <title>Luminaria - Poste ${selectedLuminaria.numero_poste}</title>
+                          <style>
+                            * { margin: 0; padding: 0; box-sizing: border-box; }
+                            body { 
+                              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                              padding: 20px;
+                              max-width: 800px;
+                              margin: 0 auto;
+                            }
+                            .header {
+                              text-align: center;
+                              border-bottom: 2px solid #000;
+                              padding-bottom: 15px;
+                              margin-bottom: 20px;
+                            }
+                            .header h1 {
+                              font-size: 24px;
+                              color: #000;
+                            }
+                            .header p {
+                              color: #666;
+                              font-size: 14px;
+                              margin-top: 5px;
+                            }
+                            .images-grid {
+                              display: grid;
+                              grid-template-columns: repeat(3, 1fr);
+                              gap: 15px;
+                              margin-bottom: 20px;
+                            }
+                            .image-container {
+                              text-align: center;
+                            }
+                            .image-container p {
+                              font-weight: bold;
+                              font-size: 12px;
+                              text-transform: uppercase;
+                              margin-bottom: 8px;
+                              color: #333;
+                            }
+                            .image-container img {
+                              max-width: 100%;
+                              height: 180px;
+                              object-fit: contain;
+                              border: 1px solid #ddd;
+                              border-radius: 8px;
+                            }
+                            .image-placeholder {
+                              width: 100%;
+                              height: 180px;
+                              background: #f5f5f5;
+                              border: 1px dashed #ccc;
+                              border-radius: 8px;
+                              display: flex;
+                              align-items: center;
+                              justify-content: center;
+                              color: #999;
+                              font-size: 12px;
+                            }
+                            .info-grid {
+                              display: grid;
+                              grid-template-columns: repeat(2, 1fr);
+                              gap: 12px;
+                            }
+                            .info-item {
+                              background: #f9f9f9;
+                              padding: 12px;
+                              border-radius: 8px;
+                              border: 1px solid #eee;
+                            }
+                            .info-item label {
+                              font-size: 11px;
+                              color: #666;
+                              text-transform: uppercase;
+                              display: block;
+                              margin-bottom: 4px;
+                            }
+                            .info-item span {
+                              font-size: 14px;
+                              font-weight: 600;
+                              color: #000;
+                            }
+                            .footer {
+                              margin-top: 20px;
+                              text-align: center;
+                              color: #999;
+                              font-size: 11px;
+                              border-top: 1px solid #eee;
+                              padding-top: 15px;
+                            }
+                            @media print {
+                              body { padding: 10px; }
+                              .no-print { display: none; }
+                            }
+                          </style>
+                        </head>
+                        <body>
+                          <div class="header">
+                            <h1>Registro de Luminaria</h1>
+                            <p>Poste #${selectedLuminaria.numero_poste} - ${coloniaName}</p>
+                          </div>
+                          
+                          <div class="images-grid">
+                            <div class="image-container">
+                              <p>Poste Completo</p>
+                              ${isValidImageUrl(selectedLuminaria.imagen_url) 
+                                ? `<img src="${selectedLuminaria.imagen_url}" alt="Poste completo" />`
+                                : '<div class="image-placeholder">Sin imagen</div>'
+                              }
+                            </div>
+                            <div class="image-container">
+                              <p>Watts</p>
+                              ${isValidImageUrl(selectedLuminaria.imagen_watts_url)
+                                ? `<img src="${selectedLuminaria.imagen_watts_url}" alt="Watts" />`
+                                : '<div class="image-placeholder">Sin imagen</div>'
+                              }
+                            </div>
+                            <div class="image-container">
+                              <p>Fotocelda</p>
+                              ${isValidImageUrl(selectedLuminaria.imagen_fotocelda_url)
+                                ? `<img src="${selectedLuminaria.imagen_fotocelda_url}" alt="Fotocelda" />`
+                                : '<div class="image-placeholder">Sin imagen</div>'
+                              }
+                            </div>
+                          </div>
+                          
+                          <div class="info-grid">
+                            <div class="info-item">
+                              <label>Número de Poste</label>
+                              <span>${selectedLuminaria.numero_poste}</span>
+                            </div>
+                            <div class="info-item">
+                              <label>Potencia</label>
+                              <span>${selectedLuminaria.watts}W</span>
+                            </div>
+                            <div class="info-item">
+                              <label>Comunidad</label>
+                              <span>${coloniaName}</span>
+                            </div>
+                            <div class="info-item">
+                              <label>Fotocelda Nueva</label>
+                              <span>${selectedLuminaria.fotocelda_nueva ? 'Sí (Capucha Azul)' : 'No'}</span>
+                            </div>
+                            <div class="info-item">
+                              <label>Latitud</label>
+                              <span>${selectedLuminaria.latitud.toFixed(6)}</span>
+                            </div>
+                            <div class="info-item">
+                              <label>Longitud</label>
+                              <span>${selectedLuminaria.longitud.toFixed(6)}</span>
+                            </div>
+                            <div class="info-item" style="grid-column: span 2;">
+                              <label>Fecha de Registro</label>
+                              <span>${new Date(selectedLuminaria.created_at).toLocaleString('es-MX', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}</span>
+                            </div>
+                          </div>
+                          
+                          <div class="footer">
+                            <p>Documento generado el ${new Date().toLocaleString('es-MX')}</p>
+                            <p>Sistema de Gestión de Luminarias - LumixMI</p>
+                          </div>
+                          
+                          <script>
+                            // Esperar a que las imágenes carguen antes de imprimir
+                            window.onload = function() {
+                              setTimeout(function() {
+                                window.print();
+                              }, 500);
+                            }
+                          </script>
+                        </body>
+                        </html>
+                      `)
+                      printWindow.document.close()
+                    }
+                  }}
+                  className="flex-1 inline-flex items-center justify-center px-6 py-3 bg-gray-100 text-gray-800 border border-gray-300 rounded-lg font-semibold hover:bg-gray-200 transition-all transform hover:scale-[1.02]"
+                >
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  Imprimir
+                </button>
+              </div>
                 </>
               )}
             </div>
