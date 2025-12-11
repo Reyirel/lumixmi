@@ -1061,14 +1061,301 @@ export default function AdminPage() {
                   </div>
                 )}
               </div>
-              <button
-                onClick={closeModal}
-                className="p-2 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0 ml-2"
-              >
-                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                {/* Botón para imprimir toda la comunidad */}
+                <button
+                  onClick={() => {
+                    // Crear ventana de impresión para toda la comunidad
+                    const printWindow = window.open('', '_blank')
+                    if (printWindow) {
+                      const sortedLuminarias = sortLuminarias(coloniaLuminarias)
+                      const itemsPerPage = 2 // 2 luminarias por página
+                      const totalPages = Math.ceil(sortedLuminarias.length / itemsPerPage)
+                      
+                      let pagesHtml = ''
+                      sortedLuminarias.forEach((lum, index) => {
+                        const pageNumber = Math.floor(index / itemsPerPage) + 1
+                        const isLastOnPage = (index + 1) % itemsPerPage === 0 || index === sortedLuminarias.length - 1
+                        const consecutiveNumber = index + 1
+                        
+                        pagesHtml += `
+                          <div class="luminaria-item ${isLastOnPage ? 'page-break' : ''}">
+                            <div class="item-header">
+                              <div class="badge">${consecutiveNumber}</div>
+                              <div class="header-text">
+                                <p>${selectedColonia.nombre}</p>
+                              </div>
+                            </div>
+                            
+                            <div class="images-grid">
+                              <div class="image-container">
+                                <div class="image-label">POSTE COMPLETO</div>
+                                <div class="image-wrapper">
+                                  ${isValidImageUrl(lum.imagen_url) 
+                                    ? `<img src="${lum.imagen_url}" alt="Poste completo" />`
+                                    : '<div class="image-placeholder">Sin imagen</div>'
+                                  }
+                                </div>
+                              </div>
+                              <div class="image-container">
+                                <div class="image-label">WATTS</div>
+                                <div class="image-wrapper">
+                                  ${isValidImageUrl(lum.imagen_watts_url)
+                                    ? `<img src="${lum.imagen_watts_url}" alt="Watts" />`
+                                    : '<div class="image-placeholder">Sin imagen</div>'
+                                  }
+                                </div>
+                              </div>
+                              <div class="image-container">
+                                <div class="image-label">FOTOCELDA</div>
+                                <div class="image-wrapper">
+                                  ${isValidImageUrl(lum.imagen_fotocelda_url)
+                                    ? `<img src="${lum.imagen_fotocelda_url}" alt="Fotocelda" />`
+                                    : '<div class="image-placeholder">Sin imagen</div>'
+                                  }
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div class="info-grid">
+                              <div class="info-item">
+                                <label>POTENCIA</label>
+                                <span>${lum.watts}W</span>
+                              </div>
+                              <div class="info-item">
+                                <label>FOTOCELDA NUEVA</label>
+                                <span>${lum.fotocelda_nueva ? 'SÍ' : 'NO'}</span>
+                              </div>
+                              <div class="info-item">
+                                <label>LATITUD</label>
+                                <span>${lum.latitud.toFixed(6)}</span>
+                              </div>
+                              <div class="info-item">
+                                <label>LONGITUD</label>
+                                <span>${lum.longitud.toFixed(6)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        `
+                      })
+                      
+                      printWindow.document.write(`
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                          <title>Luminarias - ${selectedColonia.nombre}</title>
+                          <style>
+                            * { margin: 0; padding: 0; box-sizing: border-box; }
+                            body { 
+                              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                              padding: 25px;
+                              max-width: 100%;
+                              background: #fff;
+                              color: #1a1a1a;
+                              line-height: 1.5;
+                            }
+                            .main-header {
+                              text-align: center;
+                              padding: 28px 24px;
+                              margin-bottom: 32px;
+                              border: 1.5px solid #1a1a1a;
+                              border-radius: 12px;
+                            }
+                            .main-header h1 {
+                              font-size: 28px;
+                              font-weight: 600;
+                              letter-spacing: 0.5px;
+                              margin-bottom: 6px;
+                            }
+                            .main-header p {
+                              color: #444;
+                              font-size: 15px;
+                              font-weight: 400;
+                            }
+                            .main-header .stats {
+                              display: inline-block;
+                              border: 1px solid #333;
+                              padding: 8px 20px;
+                              margin-top: 14px;
+                              font-size: 13px;
+                              font-weight: 500;
+                              border-radius: 20px;
+                              letter-spacing: 0.3px;
+                            }
+                            .luminaria-item {
+                              margin-bottom: 32px;
+                              padding: 22px;
+                              border: 1px solid #ddd;
+                              border-radius: 10px;
+                              background: #fafafa;
+                            }
+                            .item-header {
+                              display: flex;
+                              align-items: center;
+                              gap: 24px;
+                              margin-bottom: 20px;
+                              padding-bottom: 16px;
+                              border-bottom: 1px solid #e0e0e0;
+                            }
+                            .item-header .badge {
+                              width: 80px;
+                              height: 80px;
+                              background: #000 !important;
+                              color: #fff !important;
+                              border-radius: 12px;
+                              display: flex;
+                              align-items: center;
+                              justify-content: center;
+                              font-size: 36px;
+                              font-weight: 700;
+                              flex-shrink: 0;
+                              -webkit-print-color-adjust: exact !important;
+                              print-color-adjust: exact !important;
+                            }
+                            .item-header .header-text p {
+                              color: #000;
+                              font-size: 18px;
+                              font-weight: 600;
+                            }
+                            .images-grid {
+                              display: grid;
+                              grid-template-columns: repeat(3, 1fr);
+                              gap: 16px;
+                              margin-bottom: 20px;
+                            }
+                            .image-container {
+                              text-align: center;
+                            }
+                            .image-label {
+                              font-weight: 600;
+                              font-size: 12px;
+                              text-transform: uppercase;
+                              margin-bottom: 10px;
+                              color: #333;
+                              letter-spacing: 0.5px;
+                            }
+                            .image-wrapper {
+                              background: #fff;
+                              border: 1px solid #ddd;
+                              border-radius: 8px;
+                              overflow: hidden;
+                            }
+                            .image-wrapper img {
+                              width: 100%;
+                              height: 320px;
+                              object-fit: contain;
+                              display: block;
+                              padding: 8px;
+                            }
+                            .image-placeholder {
+                              width: 100%;
+                              height: 320px;
+                              background: #f8f8f8;
+                              border: 1px dashed #ccc;
+                              border-radius: 8px;
+                              display: flex;
+                              align-items: center;
+                              justify-content: center;
+                              color: #888;
+                              font-size: 14px;
+                              font-weight: 500;
+                            }
+                            .info-grid {
+                              display: grid;
+                              grid-template-columns: repeat(4, 1fr);
+                              gap: 12px;
+                            }
+                            .info-item {
+                              background: #fff;
+                              padding: 16px 12px;
+                              border: 1px solid #ddd;
+                              border-radius: 8px;
+                              text-align: center;
+                            }
+                            .info-item label {
+                              font-size: 11px;
+                              color: #666;
+                              text-transform: uppercase;
+                              display: block;
+                              margin-bottom: 6px;
+                              font-weight: 500;
+                              letter-spacing: 0.5px;
+                            }
+                            .info-item span {
+                              font-size: 20px;
+                              font-weight: 600;
+                              color: #1a1a1a;
+                            }
+                            .footer {
+                              margin-top: 28px;
+                              text-align: center;
+                              padding: 18px;
+                              border-top: 1px solid #e0e0e0;
+                            }
+                            .footer p {
+                              color: #666;
+                              font-size: 12px;
+                              margin-bottom: 4px;
+                            }
+                            .footer p:last-child {
+                              font-weight: 600;
+                              color: #1a1a1a;
+                              font-size: 13px;
+                            }
+                            @page {
+                              margin: 10mm;
+                            }
+                            @media print {
+                              body { padding: 20px; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                              .no-print { display: none; }
+                              .page-break { page-break-after: always; }
+                              .luminaria-item { page-break-inside: avoid; }
+                              .item-header .badge { background: #000 !important; color: #fff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                            }
+                          </style>
+                        </head>
+                        <body>
+                          <div class="main-header">
+                            <h1>${selectedColonia.nombre}</h1>
+                            <p>Inventario de Luminarias</p>
+                            <div class="stats">Total: ${sortedLuminarias.length} luminarias registradas</div>
+                          </div>
+                          
+                          ${pagesHtml}
+                          
+                          <div class="footer">
+                            <p>Sistema de Gestión de Luminarias — LumixMI</p>
+                          </div>
+                          
+                          <script>
+                            window.onload = function() {
+                              setTimeout(function() {
+                                window.print();
+                              }, 1000);
+                            }
+                          </script>
+                        </body>
+                        </html>
+                      `)
+                      printWindow.document.close()
+                    }
+                  }}
+                  className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
+                  title="Imprimir toda la comunidad"
+                >
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={closeModal}
+                  className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Modal Content */}
@@ -1787,172 +2074,207 @@ export default function AdminPage() {
                         <!DOCTYPE html>
                         <html>
                         <head>
-                          <title>Luminaria - Poste ${selectedLuminaria.numero_poste}</title>
+                          <title>Luminaria - ${coloniaName}</title>
                           <style>
                             * { margin: 0; padding: 0; box-sizing: border-box; }
                             body { 
-                              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                              padding: 20px;
-                              max-width: 800px;
+                              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                              padding: 30px;
+                              max-width: 100%;
                               margin: 0 auto;
+                              background: #fff;
+                              color: #1a1a1a;
+                              line-height: 1.5;
                             }
                             .header {
                               text-align: center;
-                              border-bottom: 2px solid #000;
-                              padding-bottom: 15px;
-                              margin-bottom: 20px;
+                              padding: 32px 24px;
+                              margin-bottom: 32px;
+                              border: 1.5px solid #1a1a1a;
+                              border-radius: 12px;
                             }
                             .header h1 {
-                              font-size: 24px;
-                              color: #000;
+                              font-size: 28px;
+                              font-weight: 600;
+                              margin-bottom: 8px;
+                              letter-spacing: 0.3px;
                             }
                             .header p {
-                              color: #666;
+                              color: #444;
+                              font-size: 16px;
+                              font-weight: 400;
+                            }
+                            .images-section {
+                              margin-bottom: 28px;
+                            }
+                            .section-title {
                               font-size: 14px;
-                              margin-top: 5px;
+                              font-weight: 600;
+                              color: #1a1a1a;
+                              margin-bottom: 18px;
+                              padding: 10px 0;
+                              border-bottom: 1px solid #ddd;
+                              letter-spacing: 0.5px;
+                              text-transform: uppercase;
                             }
                             .images-grid {
                               display: grid;
                               grid-template-columns: repeat(3, 1fr);
-                              gap: 15px;
-                              margin-bottom: 20px;
+                              gap: 18px;
                             }
                             .image-container {
                               text-align: center;
                             }
-                            .image-container p {
-                              font-weight: bold;
+                            .image-label {
+                              font-weight: 600;
                               font-size: 12px;
                               text-transform: uppercase;
-                              margin-bottom: 8px;
+                              margin-bottom: 12px;
                               color: #333;
+                              letter-spacing: 0.5px;
                             }
-                            .image-container img {
-                              max-width: 100%;
-                              height: 180px;
-                              object-fit: contain;
+                            .image-wrapper {
+                              background: #fff;
                               border: 1px solid #ddd;
-                              border-radius: 8px;
+                              border-radius: 10px;
+                              overflow: hidden;
+                            }
+                            .image-wrapper img {
+                              width: 100%;
+                              height: 350px;
+                              object-fit: contain;
+                              display: block;
+                              padding: 10px;
                             }
                             .image-placeholder {
                               width: 100%;
-                              height: 180px;
-                              background: #f5f5f5;
+                              height: 350px;
+                              background: #f8f8f8;
                               border: 1px dashed #ccc;
-                              border-radius: 8px;
+                              border-radius: 10px;
                               display: flex;
                               align-items: center;
                               justify-content: center;
-                              color: #999;
-                              font-size: 12px;
+                              color: #888;
+                              font-size: 14px;
+                              font-weight: 500;
+                            }
+                            .info-section {
+                              margin-bottom: 24px;
                             }
                             .info-grid {
                               display: grid;
                               grid-template-columns: repeat(2, 1fr);
-                              gap: 12px;
+                              gap: 14px;
                             }
                             .info-item {
-                              background: #f9f9f9;
-                              padding: 12px;
-                              border-radius: 8px;
-                              border: 1px solid #eee;
+                              background: #fafafa;
+                              padding: 20px 16px;
+                              border: 1px solid #e0e0e0;
+                              border-radius: 10px;
+                              text-align: center;
                             }
                             .info-item label {
                               font-size: 11px;
                               color: #666;
                               text-transform: uppercase;
                               display: block;
-                              margin-bottom: 4px;
+                              margin-bottom: 8px;
+                              font-weight: 500;
+                              letter-spacing: 0.5px;
                             }
                             .info-item span {
-                              font-size: 14px;
+                              font-size: 22px;
                               font-weight: 600;
-                              color: #000;
+                              color: #1a1a1a;
                             }
                             .footer {
-                              margin-top: 20px;
+                              margin-top: 28px;
                               text-align: center;
-                              color: #999;
-                              font-size: 11px;
-                              border-top: 1px solid #eee;
-                              padding-top: 15px;
+                              padding: 20px;
+                              border-top: 1px solid #e0e0e0;
+                            }
+                            .footer p {
+                              color: #666;
+                              font-size: 12px;
+                              margin-bottom: 4px;
+                            }
+                            .footer p:last-child {
+                              font-weight: 600;
+                              color: #1a1a1a;
+                              font-size: 13px;
+                              margin-bottom: 0;
                             }
                             @media print {
-                              body { padding: 10px; }
+                              body { padding: 25px; }
                               .no-print { display: none; }
                             }
                           </style>
                         </head>
                         <body>
                           <div class="header">
-                            <h1>Registro de Luminaria</h1>
-                            <p>Poste #${selectedLuminaria.numero_poste} - ${coloniaName}</p>
+                            <h1>REGISTRO DE LUMINARIA</h1>
+                            <p>${coloniaName}</p>
                           </div>
                           
-                          <div class="images-grid">
-                            <div class="image-container">
-                              <p>Poste Completo</p>
-                              ${isValidImageUrl(selectedLuminaria.imagen_url) 
-                                ? `<img src="${selectedLuminaria.imagen_url}" alt="Poste completo" />`
-                                : '<div class="image-placeholder">Sin imagen</div>'
-                              }
-                            </div>
-                            <div class="image-container">
-                              <p>Watts</p>
-                              ${isValidImageUrl(selectedLuminaria.imagen_watts_url)
-                                ? `<img src="${selectedLuminaria.imagen_watts_url}" alt="Watts" />`
-                                : '<div class="image-placeholder">Sin imagen</div>'
-                              }
-                            </div>
-                            <div class="image-container">
-                              <p>Fotocelda</p>
-                              ${isValidImageUrl(selectedLuminaria.imagen_fotocelda_url)
-                                ? `<img src="${selectedLuminaria.imagen_fotocelda_url}" alt="Fotocelda" />`
-                                : '<div class="image-placeholder">Sin imagen</div>'
-                              }
+                          <div class="images-section">
+                            <div class="section-title">FOTOGRAFÍAS DEL REGISTRO</div>
+                            <div class="images-grid">
+                              <div class="image-container">
+                                <div class="image-label">POSTE COMPLETO</div>
+                                <div class="image-wrapper">
+                                  ${isValidImageUrl(selectedLuminaria.imagen_url) 
+                                    ? `<img src="${selectedLuminaria.imagen_url}" alt="Poste completo" />`
+                                    : '<div class="image-placeholder">Sin imagen</div>'
+                                  }
+                                </div>
+                              </div>
+                              <div class="image-container">
+                                <div class="image-label">WATTS</div>
+                                <div class="image-wrapper">
+                                  ${isValidImageUrl(selectedLuminaria.imagen_watts_url)
+                                    ? `<img src="${selectedLuminaria.imagen_watts_url}" alt="Watts" />`
+                                    : '<div class="image-placeholder">Sin imagen</div>'
+                                  }
+                                </div>
+                              </div>
+                              <div class="image-container">
+                                <div class="image-label">FOTOCELDA</div>
+                                <div class="image-wrapper">
+                                  ${isValidImageUrl(selectedLuminaria.imagen_fotocelda_url)
+                                    ? `<img src="${selectedLuminaria.imagen_fotocelda_url}" alt="Fotocelda" />`
+                                    : '<div class="image-placeholder">Sin imagen</div>'
+                                  }
+                                </div>
+                              </div>
                             </div>
                           </div>
                           
-                          <div class="info-grid">
-                            <div class="info-item">
-                              <label>Número de Poste</label>
-                              <span>${selectedLuminaria.numero_poste}</span>
-                            </div>
-                            <div class="info-item">
-                              <label>Potencia</label>
-                              <span>${selectedLuminaria.watts}W</span>
-                            </div>
-                            <div class="info-item">
-                              <label>Comunidad</label>
-                              <span>${coloniaName}</span>
-                            </div>
-                            <div class="info-item">
-                              <label>Fotocelda Nueva</label>
-                              <span>${selectedLuminaria.fotocelda_nueva ? 'Sí (Capucha Azul)' : 'No'}</span>
-                            </div>
-                            <div class="info-item">
-                              <label>Latitud</label>
-                              <span>${selectedLuminaria.latitud.toFixed(6)}</span>
-                            </div>
-                            <div class="info-item">
-                              <label>Longitud</label>
-                              <span>${selectedLuminaria.longitud.toFixed(6)}</span>
-                            </div>
-                            <div class="info-item" style="grid-column: span 2;">
-                              <label>Fecha de Registro</label>
-                              <span>${new Date(selectedLuminaria.created_at).toLocaleString('es-MX', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}</span>
+                          <div class="info-section">
+                            <div class="section-title">INFORMACIÓN DEL REGISTRO</div>
+                            <div class="info-grid">
+                              <div class="info-item">
+                                <label>POTENCIA</label>
+                                <span>${selectedLuminaria.watts}W</span>
+                              </div>
+                              <div class="info-item">
+                                <label>COMUNIDAD</label>
+                                <span style="font-size: 18px;">${coloniaName}</span>
+                              </div>
+                              <div class="info-item">
+                                <label>FOTOCELDA NUEVA</label>
+                                <span>${selectedLuminaria.fotocelda_nueva ? 'SÍ' : 'NO'}</span>
+                              </div>
+                              <div class="info-item">
+                                <label>COORDENADAS</label>
+                                <span style="font-size: 16px;">${selectedLuminaria.latitud.toFixed(6)}, ${selectedLuminaria.longitud.toFixed(6)}</span>
+                              </div>
                             </div>
                           </div>
                           
                           <div class="footer">
                             <p>Documento generado el ${new Date().toLocaleString('es-MX')}</p>
-                            <p>Sistema de Gestión de Luminarias - LumixMI</p>
+                            <p>SISTEMA DE GESTIÓN DE LUMINARIAS - LUMIXMI</p>
                           </div>
                           
                           <script>
