@@ -1553,6 +1553,7 @@ export default function AdminPage() {
                               // Crear icono usando L.divIcon si está disponible
                               const createCustomIcon = () => {
                                 if (typeof window !== 'undefined') {
+                                  // eslint-disable-next-line @typescript-eslint/no-require-imports
                                   const L = require('leaflet')
                                   return L.divIcon({
                                     html: getIconHtml(lum.watts),

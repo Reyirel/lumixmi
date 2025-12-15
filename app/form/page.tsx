@@ -859,13 +859,13 @@ export default function FormPage() {
                 </select>
               </div>
 
-              {/* Mapa de la colonia seleccionada */}
-              {selectedColonia && (
+              {/* Mapa de la colonia seleccionada - TODO: Implementar ColoniaMap component */}
+              {/* {selectedColonia && (
                 <ColoniaMap 
                   coloniaId={selectedColonia} 
                   coloniaNombre={colonias.find(c => c.id === selectedColonia)?.nombre || 'Colonia'} 
                 />
-              )}
+              )} */}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
