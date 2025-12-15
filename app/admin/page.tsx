@@ -1,9 +1,28 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { useNotifications } from '@/lib/NotificationSystem'
 import { getUserByEmail, userHasAccessToColonia, normalizeColoniaName, type UserSession } from '@/lib/users'
+
+// Importar componentes de react-leaflet dinámicamente para evitar SSR issues
+const MapContainer = dynamic(
+  () => import('react-leaflet').then((mod) => mod.MapContainer),
+  { ssr: false }
+)
+const TileLayer = dynamic(
+  () => import('react-leaflet').then((mod) => mod.TileLayer),
+  { ssr: false }
+)
+const Marker = dynamic(
+  () => import('react-leaflet').then((mod) => mod.Marker),
+  { ssr: false }
+)
+const Popup = dynamic(
+  () => import('react-leaflet').then((mod) => mod.Popup),
+  { ssr: false }
+)
 
 type Colonia = {
   id: number
@@ -244,6 +263,24 @@ export default function AdminPage() {
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
 
+  // Estado para mostrar el mapa en el modal
+  const [showMap, setShowMap] = useState(false)
+  const [mapReady, setMapReady] = useState(false)
+
+  // Efecto para cargar CSS de Leaflet
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // Agregar CSS de Leaflet
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+      link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY='
+      link.crossOrigin = ''
+      document.head.appendChild(link)
+      setMapReady(true)
+    }
+  }, [])
+
   // Función para verificar si una URL de imagen es válida
   const isValidImageUrl = (url: string | null | undefined): boolean => {
     if (!url) return false
@@ -416,6 +453,7 @@ export default function AdminPage() {
     setSelectionMode(false)
     setSelectedLuminarias(new Set())
     setShowBulkDeleteConfirm(false)
+    setShowMap(false)
   }
 
   // Función para toggle de selección de luminaria
@@ -1369,6 +1407,198 @@ export default function AdminPage() {
                 </div>
               ) : (
                 <>
+                  {/* Botón para mostrar/ocultar mapa */}
+                  <div className="mb-4">
+                    <button
+                      onClick={() => setShowMap(!showMap)}
+                      className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 transition-all ${
+                        showMap 
+                          ? 'border-green-500 bg-green-50 text-green-700' 
+                          : 'border-gray-300 bg-white text-gray-700 hover:border-black hover:bg-gray-50'
+                      }`}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      </svg>
+                      <span className="font-medium">{showMap ? 'Ocultar Mapa' : 'Ver Mapa de Ubicaciones'}</span>
+                      <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-xs">
+                        {coloniaLuminarias.length} puntos
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Mapa con todas las ubicaciones */}
+                  {showMap && mapReady && coloniaLuminarias.length > 0 && (() => {
+                    // Calcular el centro del mapa basado en donde hay más concentración de puntos
+                    const lats = coloniaLuminarias.map(l => l.latitud)
+                    const lngs = coloniaLuminarias.map(l => l.longitud)
+                    
+                    // Usar mediana para encontrar el centro donde hay más puntos (más resistente a outliers)
+                    const sortedLats = [...lats].sort((a, b) => a - b)
+                    const sortedLngs = [...lngs].sort((a, b) => a - b)
+                    const midIndex = Math.floor(sortedLats.length / 2)
+                    
+                    // Calcular mediana
+                    const medianLat = sortedLats.length % 2 === 0 
+                      ? (sortedLats[midIndex - 1] + sortedLats[midIndex]) / 2 
+                      : sortedLats[midIndex]
+                    const medianLng = sortedLngs.length % 2 === 0 
+                      ? (sortedLngs[midIndex - 1] + sortedLngs[midIndex]) / 2 
+                      : sortedLngs[midIndex]
+                    
+                    // Algoritmo para encontrar el área con mayor densidad de puntos
+                    // Dividir en cuadrícula y encontrar la celda con más puntos
+                    const gridSize = 5 // 5x5 cuadrícula
+                    const minLat = Math.min(...lats)
+                    const maxLat = Math.max(...lats)
+                    const minLng = Math.min(...lngs)
+                    const maxLng = Math.max(...lngs)
+                    
+                    const latStep = (maxLat - minLat) / gridSize || 0.001
+                    const lngStep = (maxLng - minLng) / gridSize || 0.001
+                    
+                    // Contar puntos en cada celda de la cuadrícula
+                    const grid: { [key: string]: { count: number, sumLat: number, sumLng: number } } = {}
+                    coloniaLuminarias.forEach(lum => {
+                      const cellX = Math.floor((lum.latitud - minLat) / latStep)
+                      const cellY = Math.floor((lum.longitud - minLng) / lngStep)
+                      const key = `${cellX},${cellY}`
+                      if (!grid[key]) {
+                        grid[key] = { count: 0, sumLat: 0, sumLng: 0 }
+                      }
+                      grid[key].count++
+                      grid[key].sumLat += lum.latitud
+                      grid[key].sumLng += lum.longitud
+                    })
+                    
+                    // Encontrar la celda con más puntos
+                    let maxCount = 0
+                    let densestCell = { sumLat: medianLat, sumLng: medianLng, count: 1 }
+                    Object.values(grid).forEach(cell => {
+                      if (cell.count > maxCount) {
+                        maxCount = cell.count
+                        densestCell = cell
+                      }
+                    })
+                    
+                    // Centro en la zona con más puntos
+                    const centerLat = densestCell.count > 0 ? densestCell.sumLat / densestCell.count : medianLat
+                    const centerLng = densestCell.count > 0 ? densestCell.sumLng / densestCell.count : medianLng
+                    
+                    // Calcular un zoom apropiado basado en el área
+                    const latDiff = maxLat - minLat
+                    const lngDiff = maxLng - minLng
+                    const maxDiff = Math.max(latDiff, lngDiff)
+                    let zoom = 15
+                    if (maxDiff > 0.1) zoom = 12
+                    else if (maxDiff > 0.05) zoom = 13
+                    else if (maxDiff > 0.02) zoom = 14
+                    else if (maxDiff > 0.01) zoom = 15
+                    else zoom = 16
+                    
+                    return (
+                      <div className="mb-6 rounded-xl overflow-hidden border-2 border-gray-200 shadow-lg">
+                        <div className="bg-gray-100 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                            <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                            </svg>
+                            Ubicaciones de luminarias en {selectedColonia.nombre}
+                          </span>
+                          <div className="flex items-center gap-3 text-xs">
+                            <span className="flex items-center gap-1">
+                              <span className="w-3 h-3 bg-blue-500 rounded-full"></span> 25W
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <span className="w-3 h-3 bg-green-500 rounded-full"></span> 40W
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <span className="w-3 h-3 bg-orange-500 rounded-full"></span> 80W
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ height: '400px', width: '100%' }}>
+                          <MapContainer
+                            center={[centerLat, centerLng]}
+                            zoom={zoom}
+                            style={{ height: '100%', width: '100%' }}
+                            scrollWheelZoom={true}
+                          >
+                            <TileLayer
+                              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                            />
+                            {coloniaLuminarias.map(lum => {
+                              // Crear un icono personalizado según los watts
+                              const getIconHtml = (watts: number) => {
+                                const color = watts === 25 ? '#3B82F6' : watts === 40 ? '#22C55E' : '#F97316'
+                                return `
+                                  <div style="
+                                    background-color: ${color};
+                                    width: 24px;
+                                    height: 24px;
+                                    border-radius: 50%;
+                                    border: 3px solid white;
+                                    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    color: white;
+                                    font-size: 10px;
+                                    font-weight: bold;
+                                  "></div>
+                                `
+                              }
+                              
+                              // Crear icono usando L.divIcon si está disponible
+                              const createCustomIcon = () => {
+                                if (typeof window !== 'undefined') {
+                                  const L = require('leaflet')
+                                  return L.divIcon({
+                                    html: getIconHtml(lum.watts),
+                                    className: 'custom-marker',
+                                    iconSize: [24, 24],
+                                    iconAnchor: [12, 12],
+                                    popupAnchor: [0, -12]
+                                  })
+                                }
+                                return undefined
+                              }
+                              
+                              return (
+                                <Marker
+                                  key={lum.id}
+                                  position={[lum.latitud, lum.longitud]}
+                                  icon={createCustomIcon()}
+                                >
+                                  <Popup>
+                                    <div className="text-sm">
+                                      <p className="font-bold text-gray-900 mb-1">Poste: {lum.numero_poste}</p>
+                                      <p className="text-gray-600"><strong>Potencia:</strong> {lum.watts}W</p>
+                                      <p className="text-gray-600"><strong>Fotocelda:</strong> {lum.fotocelda_nueva ? 'Nueva' : 'Existente'}</p>
+                                      <p className="text-gray-500 text-xs mt-1">
+                                        {lum.latitud.toFixed(6)}, {lum.longitud.toFixed(6)}
+                                      </p>
+                                      <button
+                                        onClick={() => {
+                                          setShowMap(false)
+                                          setSelectedLuminaria(lum)
+                                        }}
+                                        className="mt-2 w-full px-2 py-1 bg-black text-white text-xs rounded hover:bg-gray-800 transition-colors"
+                                      >
+                                        Ver detalles
+                                      </button>
+                                    </div>
+                                  </Popup>
+                                </Marker>
+                              )
+                            })}
+                          </MapContainer>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   {/* Summary Table */}
                   <div className="bg-gray-50 rounded-xl overflow-hidden mb-6 border border-gray-200">
                     <table className="w-full">
