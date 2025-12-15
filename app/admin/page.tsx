@@ -1529,12 +1529,18 @@ export default function AdminPage() {
                               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                             />
                             {coloniaLuminarias.map(lum => {
-                              // Crear un icono personalizado según los watts
-                              const getIconHtml = (watts: number) => {
-                                const color = watts === 25 ? '#3B82F6' : watts === 40 ? '#22C55E' : '#F97316'
-                                return `
+                              // Crear color según watts
+                              const getColor = (watts: number) => {
+                                return watts === 25 ? '#3B82F6' : watts === 40 ? '#22C55E' : '#F97316'
+                              }
+                              
+                              // eslint-disable-next-line @typescript-eslint/no-require-imports
+                              const L = typeof window !== 'undefined' ? require('leaflet') : null
+                              
+                              const customIcon = L ? L.divIcon({
+                                html: `
                                   <div style="
-                                    background-color: ${color};
+                                    background-color: ${getColor(lum.watts)};
                                     width: 24px;
                                     height: 24px;
                                     border-radius: 50%;
@@ -1547,30 +1553,20 @@ export default function AdminPage() {
                                     font-size: 10px;
                                     font-weight: bold;
                                   "></div>
-                                `
-                              }
+                                `,
+                                className: 'custom-marker',
+                                iconSize: [24, 24],
+                                iconAnchor: [12, 12],
+                                popupAnchor: [0, -12]
+                              }) : undefined
                               
-                              // Crear icono usando L.divIcon si está disponible
-                              const createCustomIcon = () => {
-                                if (typeof window !== 'undefined') {
-                                  // eslint-disable-next-line @typescript-eslint/no-require-imports
-                                  const L = require('leaflet')
-                                  return L.divIcon({
-                                    html: getIconHtml(lum.watts),
-                                    className: 'custom-marker',
-                                    iconSize: [24, 24],
-                                    iconAnchor: [12, 12],
-                                    popupAnchor: [0, -12]
-                                  })
-                                }
-                                return undefined
-                              }
+                              if (!customIcon) return null
                               
                               return (
                                 <Marker
                                   key={lum.id}
                                   position={[lum.latitud, lum.longitud]}
-                                  icon={createCustomIcon()}
+                                  icon={customIcon}
                                 >
                                   <Popup>
                                     <div className="text-sm">
