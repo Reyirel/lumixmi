@@ -184,7 +184,7 @@ const METAS_LAMPARAS: { [key: string]: number } = {
   "El Rosario Capula": 34,
   "Ex-Hacienda Debodhe": 89,
   "Jagüey de Vázquez Capula": 76,
-  "Jahuey Capula": 76,
+  "Jahuey Capula": 58,
   "La Estación": 100,
   "La Huerta Capula": 77,
   "La Loma de la Cruz": 12,
