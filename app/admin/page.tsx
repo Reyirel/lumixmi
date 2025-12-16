@@ -186,7 +186,7 @@ const METAS_LAMPARAS: { [key: string]: number } = {
   "Jagüey de Vázquez Capula": 76,
   "Jahuey Capula": 58,
   "La Estación": 100,
-  "La Huerta Capula": 77,
+  "La Huerta Capula": 76,
   "La Loma de la Cruz": 12,
   "La Palma": 66,
   "Puerto Bangandho": 79,
