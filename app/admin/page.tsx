@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
+import * as XLSX from 'xlsx'
 import { useNotifications } from '@/lib/NotificationSystem'
 import { getUserByEmail, userHasAccessToColonia, normalizeColoniaName, type UserSession } from '@/lib/users'
 
@@ -175,7 +176,7 @@ const METAS_LAMPARAS: { [key: string]: number } = {
   "Bangandho": 92,
   "Botenguedho": 121,
   "Capula": 231,
-  "Cerrito Capula": 52,
+  "Cerrito Capula": 51,
   "Col. La Joya": 65,
   "Col. La Libertad": 64,
   "Col. Valle de los Remedios - El Mirador Capula": 117,
@@ -193,7 +194,7 @@ const METAS_LAMPARAS: { [key: string]: number } = {
   "Cantamaye": 6,
   "Col. Gral. Felipe Ángeles": 223,
   "El Bojay": 9,
-  "El Dexthi San Juanico": 72,
+  "El Dexthi San Juanico": 71,
   "El Durazno": 144,
   "La Heredad": 113,
   "Los Martínez": 7,
@@ -648,6 +649,92 @@ export default function AdminPage() {
     }
   }
 
+  // Función para exportar todas las luminarias a Excel
+  const exportAllToExcel = () => {
+    // Preparar datos para Excel con numeración consecutiva
+    const dataForExcel = userLuminarias.map((lum, index) => {
+      const colonia = colonias.find(c => c.id === lum.colonia_id)
+      return {
+        'N°': index + 1,
+        'Comunidad': colonia?.nombre || 'Sin comunidad',
+        'Potencia (W)': lum.watts,
+        'Latitud': lum.latitud.toFixed(6),
+        'Longitud': lum.longitud.toFixed(6),
+        'Fotocelda Nueva': lum.fotocelda_nueva ? 'SÍ' : 'NO',
+        'Fecha Registro': new Date(lum.created_at).toLocaleDateString('es-MX')
+      }
+    })
+
+    // Crear workbook y worksheet
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(dataForExcel)
+
+    // Configurar anchos de columna
+    const colWidths = [
+      { wch: 5 },   // N°
+      { wch: 25 },  // Comunidad
+      { wch: 12 },  // Potencia
+      { wch: 12 },  // Latitud
+      { wch: 12 },  // Longitud
+      { wch: 15 },  // Fotocelda Nueva
+      { wch: 15 }   // Fecha Registro
+    ]
+    ws['!cols'] = colWidths
+
+    // Agregar worksheet al workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Luminarias')
+
+    // Generar y descargar archivo
+    const fileName = `Luminarias_Generales_${new Date().toLocaleDateString('es-MX').replace(/\//g, '-')}.xlsx`
+    XLSX.writeFile(wb, fileName)
+
+    showNotification('success', 'Excel exportado', 
+      `Se exportaron ${dataForExcel.length} luminarias al archivo ${fileName}`, 3000)
+  }
+
+  // Función para exportar luminarias de una comunidad específica a Excel
+  const exportComunidadToExcel = (colonia: Colonia, luminariasComunidad: Luminaria[]) => {
+    // Ordenar las luminarias antes de exportar
+    const sortedLuminarias = sortLuminarias(luminariasComunidad)
+    
+    // Preparar datos para Excel con numeración consecutiva
+    const dataForExcel = sortedLuminarias.map((lum, index) => ({
+      'N°': index + 1,
+      'Comunidad': colonia.nombre,
+      'Potencia (W)': lum.watts,
+      'Latitud': lum.latitud.toFixed(6),
+      'Longitud': lum.longitud.toFixed(6),
+      'Fotocelda Nueva': lum.fotocelda_nueva ? 'SÍ' : 'NO',
+      'Fecha Registro': new Date(lum.created_at).toLocaleDateString('es-MX')
+    }))
+
+    // Crear workbook y worksheet
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(dataForExcel)
+
+    // Configurar anchos de columna
+    const colWidths = [
+      { wch: 5 },   // N°
+      { wch: 25 },  // Comunidad
+      { wch: 12 },  // Potencia
+      { wch: 12 },  // Latitud
+      { wch: 12 },  // Longitud
+      { wch: 15 },  // Fotocelda Nueva
+      { wch: 15 }   // Fecha Registro
+    ]
+    ws['!cols'] = colWidths
+
+    // Agregar worksheet al workbook
+    XLSX.utils.book_append_sheet(wb, ws, colonia.nombre)
+
+    // Generar y descargar archivo
+    const fileName = `Luminarias_${colonia.nombre.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g, '').replace(/\s+/g, '_')}_${new Date().toLocaleDateString('es-MX').replace(/\//g, '-')}.xlsx`
+    XLSX.writeFile(wb, fileName)
+
+    showNotification('success', 'Excel exportado', 
+      `Se exportaron ${dataForExcel.length} luminarias de ${colonia.nombre}`, 3000)
+  }
+
   // Filtrar colonias según el usuario actual
   // Admin ve todas, encargados solo ven sus comunidades asignadas
   // También agrupa colonias unificadas para mostrar solo una entrada
@@ -809,6 +896,19 @@ export default function AdminPage() {
                 </svg>
                 <span className="hidden xs:inline">Registrar Luminaria</span>
                 <span className="xs:hidden">Registrar</span>
+              </button>
+
+              {/* Botón de exportar a Excel */}
+              <button 
+                onClick={exportAllToExcel}
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-green-700 transition-all"
+                title="Exportar todas las luminarias a Excel"
+              >
+                <svg className="w-4 h-4 mr-1 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span className="hidden xs:inline">Exportar Excel</span>
+                <span className="xs:hidden">Excel</span>
               </button>
               
               {/* Botón de cerrar sesión */}
@@ -1385,6 +1485,18 @@ export default function AdminPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                   </svg>
                 </button>
+                
+                {/* Botón para exportar comunidad a Excel */}
+                <button
+                  onClick={() => exportComunidadToExcel(selectedColonia, coloniaLuminarias)}
+                  className="p-2 hover:bg-green-100 rounded-lg transition-colors"
+                  title="Exportar comunidad a Excel"
+                >
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </button>
+                
                 <button
                   onClick={closeModal}
                   className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
