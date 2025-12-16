@@ -181,7 +181,7 @@ const METAS_LAMPARAS: { [key: string]: number } = {
   "Col. La Libertad": 64,
   "Col. Valle de los Remedios - El Mirador Capula": 117,
   "El Nith": 347,
-  "El Rosario Capula": 34,
+  "El Rosario Capula": 32,
   "Ex-Hacienda Debodhe": 89,
   "Jagüey de Vázquez Capula": 76,
   "Jahuey Capula": 58,
