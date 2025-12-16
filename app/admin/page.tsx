@@ -94,17 +94,17 @@ type WattGroup = {
 
 // Metas de lámparas por comunidad
 const METAS_LAMPARAS: { [key: string]: number } = {
-  "Barrio de Progreso": 73,
+  "Barrio de Progreso": 71,
   "Col. Vista Hermosa": 46,
-  "Cruz Blanca": 46,
+  "Cruz Blanca": 41,
   "El Deca": 92,
   "La Loma López Rayón": 63,
   "La Mesa López Rayón": 27,
   "Ignacio López Rayón": 113,
-  "López Rayón": 113, // Meta unificada para López Rayón (usando la meta de Ignacio López Rayón)
+  "López Rayón": 108, // Meta unificada para López Rayón
   "El Dextli Alberto": 28,
-  "El Dextho": 108,
-  "El Mandho": 179,
+  "El Dextho": 107,
+  "El Mandho": 176,
   "El Oro": 105,
   "La Loma del Oro": 142,
   "La Media Luna": 122,
@@ -180,14 +180,14 @@ const METAS_LAMPARAS: { [key: string]: number } = {
   "Col. La Joya": 65,
   "Col. La Libertad": 64,
   "Col. Valle de los Remedios - El Mirador Capula": 117,
-  "El Nith": 347,
+  "El Nith": 358,
   "El Rosario Capula": 32,
   "Ex-Hacienda Debodhe": 89,
-  "Jagüey de Vázquez Capula": 76,
+  "Jagüey de Vázquez Capula": 64,
   "Jahuey Capula": 58,
   "La Estación": 100,
   "La Huerta Capula": 76,
-  "La Loma de la Cruz": 12,
+  "La Loma de la Cruz": 79,
   "La Palma": 66,
   "Puerto Bangandho": 79,
   "San Pedro Capula": 101,
@@ -201,6 +201,8 @@ const METAS_LAMPARAS: { [key: string]: number } = {
   "Puerto Dexthi": 89,
   "San Juanico": 58,
   "Ustheje": 19,
+  "El Dexthi Alberto": 25,
+
 }
 
 // Función para normalizar nombres de comunidades para comparación
