@@ -124,7 +124,7 @@ const METAS_LAMPARAS: { [key: string]: number } = {
   "Col. Lázaro Cárdenas": 27,
   "Boxhuada": 49,
   "El Banxu": 73,
-  "El Huacri": 54,
+  "El Huacri": 53,
   "El Meje": 20,
   "El Nandho": 12,
   "La Lagunita": 36,
