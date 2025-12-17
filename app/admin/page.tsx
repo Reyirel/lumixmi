@@ -202,6 +202,7 @@ const METAS_LAMPARAS: { [key: string]: number } = {
   "San Juanico": 58,
   "Ustheje": 19,
   "El Dexthi Alberto": 25,
+  "Vista Hermosa": 36
 
 }
 
