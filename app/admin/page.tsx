@@ -199,7 +199,7 @@ const METAS_LAMPARAS: { [key: string]: number } = {
   "La Heredad": 113,
   "Los Martínez": 7,
   "Puerto Dexthi": 89,
-  "San Juanico": 58,
+  "San Juanico": 98,
   "Ustheje": 19,
   "El Dexthi Alberto": 25,
   "Vista Hermosa": 36
