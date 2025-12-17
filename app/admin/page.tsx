@@ -657,12 +657,12 @@ export default function AdminPage() {
     // Preparar datos para Excel con numeración consecutiva
     const dataForExcel = userLuminarias.map((lum, index) => {
       const colonia = colonias.find(c => c.id === lum.colonia_id)
+      const googleMapsUrl = `https://www.google.com/maps?q=${lum.latitud},${lum.longitud}`
       return {
         'N°': index + 1,
         'Comunidad': colonia?.nombre || 'Sin comunidad',
         'Potencia (W)': lum.watts,
-        'Latitud': lum.latitud.toFixed(6),
-        'Longitud': lum.longitud.toFixed(6),
+        'Ubicación Google Maps': googleMapsUrl,
         'Fotocelda Nueva': lum.fotocelda_nueva ? 'SÍ' : 'NO',
         'Fecha Registro': new Date(lum.created_at).toLocaleDateString('es-MX')
       }
@@ -677,8 +677,7 @@ export default function AdminPage() {
       { wch: 5 },   // N°
       { wch: 25 },  // Comunidad
       { wch: 12 },  // Potencia
-      { wch: 12 },  // Latitud
-      { wch: 12 },  // Longitud
+      { wch: 50 },  // Ubicación Google Maps
       { wch: 15 },  // Fotocelda Nueva
       { wch: 15 }   // Fecha Registro
     ]
@@ -701,15 +700,17 @@ export default function AdminPage() {
     const sortedLuminarias = sortLuminarias(luminariasComunidad)
     
     // Preparar datos para Excel con numeración consecutiva
-    const dataForExcel = sortedLuminarias.map((lum, index) => ({
-      'N°': index + 1,
-      'Comunidad': colonia.nombre,
-      'Potencia (W)': lum.watts,
-      'Latitud': lum.latitud.toFixed(6),
-      'Longitud': lum.longitud.toFixed(6),
-      'Fotocelda Nueva': lum.fotocelda_nueva ? 'SÍ' : 'NO',
-      'Fecha Registro': new Date(lum.created_at).toLocaleDateString('es-MX')
-    }))
+    const dataForExcel = sortedLuminarias.map((lum, index) => {
+      const googleMapsUrl = `https://www.google.com/maps?q=${lum.latitud},${lum.longitud}`
+      return {
+        'N°': index + 1,
+        'Comunidad': colonia.nombre,
+        'Potencia (W)': lum.watts,
+        'Ubicación Google Maps': googleMapsUrl,
+        'Fotocelda Nueva': lum.fotocelda_nueva ? 'SÍ' : 'NO',
+        'Fecha Registro': new Date(lum.created_at).toLocaleDateString('es-MX')
+      }
+    })
 
     // Crear workbook y worksheet
     const wb = XLSX.utils.book_new()
@@ -720,8 +721,7 @@ export default function AdminPage() {
       { wch: 5 },   // N°
       { wch: 25 },  // Comunidad
       { wch: 12 },  // Potencia
-      { wch: 12 },  // Latitud
-      { wch: 12 },  // Longitud
+      { wch: 50 },  // Ubicación Google Maps
       { wch: 15 },  // Fotocelda Nueva
       { wch: 15 }   // Fecha Registro
     ]
