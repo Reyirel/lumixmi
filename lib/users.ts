@@ -146,7 +146,8 @@ export const USERS: User[] = [
       'LA MESA LÓPEZ RAYÓN',
       'LA REFORMA',
       'PANALES',
-      'SANTA ANA'
+      'SANTA ANA',
+      'VVISTA HERMOSA'
     ]
   },
   // AQUINO
